@@ -20,14 +20,16 @@ gotchas, and how this project relates to its sibling, AIMO Safety Tracker.
 ## Deployment
 Independent Cloudflare/Supabase/Notion resources exist for this project now, separate
 from the sibling's (see `docs/CLOUDFLARE.md`, `docs/SUPABASE.md`, `docs/NOTION.md`).
-Hosting is **not fully live yet** — `wrangler.jsonc` + `public/index.html` are in the
-repo, but connecting the Cloudflare Worker to this GitHub repo is a dashboard-only
-step only the owner can do (no API path exists); see `docs/CLOUDFLARE.md` for the
-exact steps. Once that's connected:
-- **A push to `main` is a deploy** — same model as the Safety Tracker sibling. Nothing
-  else to trigger.
+The Cloudflare Worker is connected to this GitHub repo and auto-builds on push, but
+is **not reachable by anyone yet** — no public URL (`workers.dev` subdomain or custom
+domain) is enabled on it. It's also currently tracking the
+`claude/review-pending-context-jbjnrg` branch as production, not `main` (no `main`
+branch exists in this repo yet) — revisit once/if that branch is merged. See
+`docs/CLOUDFLARE.md` for exact status and next steps.
+- **A push to the tracked branch is a deploy** — same "push is a deploy" model as the
+  Safety Tracker sibling, just not on `main` yet.
 - "Deploying" a change means: copy `aimo-tracker.html` (the working copy) →
-  `public/index.html` (the deploy copy) → commit → push to `main` — only on an
+  `public/index.html` (the deploy copy) → commit → push — only on an
   explicit "ship it," per the hard rule below.
 Until the Cloudflare connection is made, treat it as still not live: committing here
 does not put anything in front of users yet.

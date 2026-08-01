@@ -1689,6 +1689,16 @@ body.verify-mode .header,body.verify-mode .app-shell{display:none!important;}
 .tab-bar::-webkit-scrollbar-thumb{background:var(--border);border-radius:0;}
 .tab-bar::-webkit-scrollbar-track{background:transparent;}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+/* ── FEEDBACK FAB + MODAL ── */
+.fb-fab{position:fixed;right:20px;bottom:20px;z-index:590;width:46px;height:46px;border-radius:50%;background:var(--accent);color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s;}
+.fb-fab:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.3);}
+body.verify-mode .fb-fab{display:none!important;}
+@media print{.fb-fab{display:none!important;}}
+.fb-screenshot-preview{max-height:150px;border-radius:8px;margin-top:8px;border:1px solid var(--border);display:block;}
+.fb-status-msg{font-size:11.5px;margin-top:8px;}
+.fb-status-msg.err{color:var(--red);}
+.fb-status-msg.ok{color:var(--green);}
 </style>
 <!-- PptxGenJS 3.12.0 — inlined for offline use -->
 <script>
@@ -2188,10 +2198,14 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v1.0';
-const APP_DATE     = '07 Jul 2026';
+const APP_VERSION  = 'v1.1';
+const APP_DATE     = '01 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
+// Relative path so this works same-origin once the Cloudflare Worker (see
+// docs/CLOUDFLARE.md) is deployed and serving this app. Set to '' to hide the
+// feedback button entirely (e.g. before the endpoint exists).
+const FEEDBACK_ENDPOINT = '/api/feedback';
 
 const STATUS_LABEL = {'on-track':'On Track', delayed:'Delayed', ahead:'Ahead', complete:'Complete'};
 
@@ -2488,6 +2502,109 @@ function fmtDate(s) {
   return isNaN(d)?'—':d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
 }
 function esc(s) { return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'):''; }
+
+/* ── FEEDBACK ── */
+let fbScreenshotDataUrl = null;
+let fbSending = false;
+
+function fbCurrentContext() {
+  let screen = state.view === 'home' ? 'Homepage' : 'Project Detail';
+  if (state.view === 'detail') {
+    const p = state.projects.find(x => x.id === state.selectedId);
+    screen += p ? ` — ${p.name} (${state.activeTab})` : ` (${state.activeTab})`;
+  }
+  return `${APP_VERSION} · ${screen}`;
+}
+
+function openFeedbackModal() {
+  document.getElementById('fbComment').value = '';
+  fbRemoveScreenshot();
+  const statusEl = document.getElementById('fbStatusMsg');
+  statusEl.className = 'fb-status-msg hidden';
+  statusEl.textContent = '';
+  document.getElementById('fbContextLbl').textContent = fbCurrentContext();
+  document.getElementById('feedbackOverlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('fbComment').focus(), 50);
+}
+function closeFeedbackModal() {
+  if (fbSending) return;
+  document.getElementById('feedbackOverlay').classList.add('hidden');
+}
+function fbHandleScreenshot(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 900;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      fbScreenshotDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const preview = document.getElementById('fbScreenshotPreview');
+      preview.src = fbScreenshotDataUrl;
+      preview.classList.remove('hidden');
+      document.getElementById('fbRemoveScreenshotBtn').classList.remove('hidden');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function fbRemoveScreenshot() {
+  fbScreenshotDataUrl = null;
+  const input = document.getElementById('fbScreenshotInput');
+  if (input) input.value = '';
+  const preview = document.getElementById('fbScreenshotPreview');
+  if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+  const removeBtn = document.getElementById('fbRemoveScreenshotBtn');
+  if (removeBtn) removeBtn.classList.add('hidden');
+}
+async function submitFeedback() {
+  if (fbSending) return;
+  const comment = document.getElementById('fbComment').value.trim();
+  const statusEl = document.getElementById('fbStatusMsg');
+  if (!comment) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Please enter a comment before sending.';
+    return;
+  }
+  if (!FEEDBACK_ENDPOINT) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Feedback isn\'t connected yet — nothing was sent.';
+    return;
+  }
+  fbSending = true;
+  const sendBtn = document.getElementById('fbSendBtn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending…';
+  statusEl.className = 'fb-status-msg hidden';
+  try {
+    const res = await fetch(FEEDBACK_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        comment,
+        context: fbCurrentContext(),
+        screenshot: fbScreenshotDataUrl || null,
+      }),
+    });
+    if (!res.ok) throw new Error('Request failed: ' + res.status);
+    statusEl.className = 'fb-status-msg ok';
+    statusEl.textContent = 'Thanks — feedback sent!';
+    setTimeout(closeFeedbackModal, 1200);
+  } catch (err) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Couldn\'t send feedback — please try again shortly.';
+  } finally {
+    fbSending = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send';
+  }
+}
 function statusCls(s) { return s.replace('-',''); }
 function satTile() { return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'',maxZoom:19}); }
 function lblTile() { return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{attribution:'',maxZoom:19,opacity:.7}); }
@@ -10797,6 +10914,7 @@ if (_vpParams.get('verify')) {
     if (_dirtySinceBackup) { e.preventDefault(); e.returnValue = ''; }
   });
   (function(){const el=document.getElementById('appVersionBadge');if(el)el.textContent=APP_VERSION+' · '+APP_DATE;})();
+  (function(){const el=document.getElementById('fbFab');if(el&&!FEEDBACK_ENDPOINT)el.classList.add('hidden');})();
   // Direct callback for verify-page tab to call via window.opener
   window.aimoRefresh = function() {
     loadProjects();
@@ -13424,6 +13542,40 @@ function closeSessionModal() {
   </div>
 </div>
 
-
+<!-- FEEDBACK FAB + MODAL -->
+<button class="fb-fab" id="fbFab" onclick="openFeedbackModal()" title="Send feedback" aria-label="Send feedback">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+</button>
+<div class="overlay hidden" id="feedbackOverlay" onclick="if(event.target===this)closeFeedbackModal()">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-hdr">
+      <div>
+        <h2>Send Feedback</h2>
+        <p>Bugs, ideas, anything — goes straight to the team's inbox.</p>
+      </div>
+      <button class="close-btn" onclick="closeFeedbackModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fgrp">
+        <label>What's on your mind?</label>
+        <textarea id="fbComment" rows="5" maxlength="2000" placeholder="Describe the issue or idea…"></textarea>
+      </div>
+      <div class="fgrp" style="margin-top:12px;">
+        <label>Screenshot (optional)</label>
+        <input type="file" id="fbScreenshotInput" accept="image/*" onchange="fbHandleScreenshot(this)">
+        <img id="fbScreenshotPreview" class="fb-screenshot-preview hidden" alt="Screenshot preview">
+        <button type="button" class="btn btn-ghost btn-xs hidden" id="fbRemoveScreenshotBtn" onclick="fbRemoveScreenshot()" style="margin-top:6px;align-self:flex-start;">Remove screenshot</button>
+      </div>
+      <div class="fb-status-msg hidden" id="fbStatusMsg"></div>
+    </div>
+    <div class="modal-ftr">
+      <span style="font-size:10px;color:var(--text-3);" id="fbContextLbl"></span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="closeFeedbackModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="fbSendBtn" onclick="submitFeedback()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body></html>

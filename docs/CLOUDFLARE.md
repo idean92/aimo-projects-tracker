@@ -42,23 +42,26 @@ and leaves a comment on the new page noting a screenshot was attached, since Not
 page-properties API doesn't take inline image data. Wiring actual image upload (via
 Notion's file-upload API) is a follow-up, not built.
 
-## What's NOT done — requires the Cloudflare dashboard (no API/MCP path exists)
-The connected Cloudflare MCP tools only cover D1, KV, R2, Hyperdrive, and read-only
-Worker inspection (`workers_list` / `workers_get_worker` / `workers_get_worker_code`)
-— there is no tool to create a Worker or connect a GitHub repo for auto-deploy.
-Per Cloudflare's docs, that's a dashboard-only flow:
+## Status (updated 01 Aug 2026)
+- ✅ **Worker created and connected** to `idean92/aimo-projects-tracker` via
+  Cloudflare's Git integration (done manually in the dashboard — confirmed working,
+  auto-builds on push).
+- ⚠️ **Tracking branch `claude/review-pending-context-jbjnrg`, not `main`** — there is
+  no `main` branch in this repo yet (everything so far has been pushed straight to
+  this working branch). If/when this branch is merged into a real `main`, repoint the
+  Worker's production branch in Settings → Builds.
+- ⚠️ **No public URL enabled** — the dashboard overview shows "No URLs enabled,"
+  `workers.dev` disabled, no custom domain. Nobody can reach the deployed app yet.
+  Fix in **Settings → Domains & Routes**: enable the `workers.dev` subdomain for
+  quick testing, and/or add a custom domain for real use.
+- ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` not set** — see "Feedback
+  endpoint setup" above. Until both are set, `/api/feedback` returns 503.
+- `public/index.html` now matches `aimo-tracker.html` (shipped 01 Aug 2026, v1.1) —
+  once a URL is enabled, the deployed site will show the feedback button.
 
-1. Go to **Workers & Pages** in the Cloudflare dashboard → **Create** → **Import a
-   repository** (or create a Worker first, then Settings → Builds → Connect).
-2. Select the `idean92/aimo-projects-tracker` GitHub repo, branch `main`.
-3. Cloudflare should auto-detect `wrangler.jsonc` in the repo root — confirm the
-   Worker name matches (`aimo-projects-tracker`) and the build/deploy settings need
-   no build command (it's static assets, nothing to compile).
-4. Push a commit to `main` to trigger the first build/deploy.
-
-Once that's connected, the deploy model matches the sibling exactly: **a push to
-`main` is a deploy** — nothing else to trigger. Update `CLAUDE.md`'s Deployment
-section once this is live (it currently still says "no hosting wired up").
+There is no Cloudflare MCP tool to enable a workers.dev subdomain, add a custom
+domain, or set Worker environment variables/secrets — all three remain dashboard-only
+steps for the owner to complete.
 
 ## R2 / photo storage
 Explicitly skipped for now (per your direction) — AIMO Tracker has no photo-capture

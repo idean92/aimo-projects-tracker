@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P1 | In-app feedback button + Cloudflare/Notion endpoint | Built (v1.1), not deployed |
+| P1 | In-app feedback button + Cloudflare/Notion endpoint | Shipped (v1.1); not fully functional yet — see notes |
 
 ## 🐛 Bugs
 _(none yet)_
@@ -15,13 +15,15 @@ _(none yet)_
 _(none yet)_
 
 ## 🆕 New
-- **P1 — In-app feedback button + endpoint.** Owner-approved and built directly
-  (root-cause: no feedback capture existed for this app, unlike the Safety Tracker
-  sibling). Floating button + modal in `aimo-tracker.html` (v1.1), Cloudflare Worker
-  endpoint (`src/worker.js`) filing into the Notion Feedback Inbox. **Remaining
-  before this is live:** Cloudflare Worker deploy/connect + Notion integration
-  credential — see `docs/CLOUDFLARE.md`. Not shipped (not copied to
-  `public/index.html` / pushed) pending explicit "ship it".
+_(none currently in progress)_
 
 ## ✅ Shipped
-_(none yet — nothing has gone through the deploy step)_
+- **P1 — In-app feedback button + endpoint** (v1.1, 01 Aug 2026). Floating button +
+  modal in `aimo-tracker.html`, Cloudflare Worker endpoint (`src/worker.js`) filing
+  into the Notion Feedback Inbox. Shipped to `public/index.html` and pushed —
+  Cloudflare's Git integration is connected and building from this repo. **Not yet
+  end-to-end functional:** no public URL is enabled on the Worker yet, and
+  `NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` still need to be set (see
+  `docs/CLOUDFLARE.md`). Also note: Cloudflare is currently tracking the
+  `claude/review-pending-context-jbjnrg` branch as production, not `main` (no `main`
+  branch exists yet in this repo) — revisit once/if this branch is merged.
