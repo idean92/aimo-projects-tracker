@@ -1,0 +1,105 @@
+# D1 migration trial — AIMO-Projects-Tracker
+
+**Status: infrastructure built and tested, not yet connected to the live app or to
+a real Cloudflare Access deployment.** This is a trial of Option B (migrate off
+Supabase to Cloudflare D1 + Cloudflare Access) run against `AIMO-Projects-Tracker`
+specifically *because* it has 0 rows and 0 auth users — nothing live to risk. The
+Safety Tracker's real Supabase project (`AIMO-SMS-Tracker`, live user data) is
+untouched; this trial is what would get evaluated before ever considering that
+migration for real.
+
+## Why D1 instead of the Supabase consolidation (Option A)
+
+Both options were on the table to free up a Supabase free-tier project slot.
+Option A (merge into `AIMO-SMS-Tracker` under separate schemas) was drafted but
+not executed — seeing this session had already chosen *independent* Supabase
+projects for the two apps specifically because they'd diverged, consolidating them
+back was a real reversal worth a second look, and the owner picked Option B instead
+before that reversal was confirmed. `AIMO-SMS-Tracker` and its Supabase project are
+untouched. (Data backups from that project were still taken as a precaution and
+are sitting in the session scratchpad, not this repo — they contain live user data
+and don't belong in git.)
+
+## What's built
+
+- **D1 database**: `aimo-projects-tracker-db` (uuid `89e58d3c-7182-4b2f-96c7-7b15d8bdbf18`).
+- **Schema** (`migrations/0001_init.sql`): `team_state` (shared blob, mirrors the
+  Supabase table of the same name) and `app_state` (per-user blob, mirrors the
+  Safety Tracker's `app_state` table — AIMO Tracker itself has no per-user concept
+  today, so this is a template proving the pattern works before it's ever needed
+  for real).
+- **`wrangler.jsonc`**: added a `d1_databases` binding (`DB`).
+- **`src/access.js`**: verifies a Cloudflare Access JWT (`Cf-Access-Jwt-Assertion`
+  header) against the team's JWKS — signature, expiry, audience — and returns the
+  verified `email`/`sub` claims. Throws on any failure; never falls back to a
+  default identity.
+- **`src/worker.js`**: two new routes.
+  - `GET/PUT /api/team-state` — any valid Access identity, single shared row
+    (same trust model as the old Supabase policy: `auth.uid() IS NOT NULL`).
+  - `GET/PUT /api/app-state` — scoped to the caller's *verified* email.
+
+## The "no missed WHERE clause" guarantee, concretely
+
+This was the explicit ask: show exactly where per-user scoping happens and how a
+missed `WHERE` clause is prevented. The answer is structural, not a promise to be
+careful:
+
+`handleAppState()` in `src/worker.js` calls `requireAccessIdentity(request, env)`
+once, and the returned `email` is the **only** identifier used in both the
+`SELECT ... WHERE user_id = ?` and the `INSERT ... ON CONFLICT` — bound as a SQL
+parameter, never string-concatenated. The function never reads a `user_id` from
+the request body or query string at all, so there's no client-supplied value that
+could be forgotten, spoofed, or substituted. If someone's client sent
+`{"user_id": "someone-else@x.com", "data": {...}}`, that field is simply never
+looked at.
+
+**Tested, not just asserted:**
+- A standalone test (`test_access_jwt.mjs`, run against real RSA-signed JWTs,
+  not against a live Access deployment) confirmed: a valid token for user A
+  resolves to A's email; a valid token for user B resolves to a different email;
+  a tampered payload (B's email spliced into A's signed token) fails signature
+  verification; an expired token is rejected; a wrong-audience token is rejected;
+  a token signed by a key not in the JWKS is rejected. All 6 checks passed.
+- At the D1 layer directly: inserted two rows (`usera@example.com`,
+  `userb@example.com`), ran the exact parameterized query the handler uses for
+  each, confirmed each only ever returns its own row. Rows deleted afterward —
+  D1 is back to empty.
+
+## What's NOT done — requires the Cloudflare dashboard (no API path)
+
+Same category of manual step as the Worker Git-integration connection and the
+`workers.dev` subdomain toggle earlier in this project — the connected Cloudflare
+MCP tools have no Access/Zero Trust API surface.
+
+1. **Create a Cloudflare Access Application** (Zero Trust dashboard → Access →
+   Applications) protecting this Worker (or at least `/api/app-state` and
+   `/api/team-state`). Add your team members as allowed users (free tier: ≤50).
+2. Note the **team domain** (e.g. `<your-team>.cloudflareaccess.com`) and the
+   Application's **Audience (AUD) tag**.
+3. Set two Worker vars (Settings → Variables and secrets — the **top-level** one,
+   not the one nested under Build; see the note in `docs/CLOUDFLARE.md` about that
+   exact gotcha from the Notion feedback endpoint):
+   - `CF_ACCESS_TEAM_DOMAIN` = your team domain
+   - `CF_ACCESS_AUD` = the Application's AUD tag
+4. Test by logging into `/api/app-state` through the Access-protected URL as two
+   different team members and confirming each only ever sees their own data —
+   the real-world version of the isolation test above.
+
+Until that's done, both routes return `401` with `"Cloudflare Access is not
+configured"` — safe, inert, no data exposure risk either way.
+
+## Not wired into the app yet
+
+`aimo-tracker.html` has no client-side code calling these endpoints — it never had
+any cloud-sync code at all (same as the Supabase `team_state` table before it:
+built and ready, not yet used). Wiring the app's UI to actually read/write through
+`/api/team-state` (and, if ever needed, `/api/app-state`) is a separate, later
+step — this trial's job was to prove the D1 + Access approach is sound before
+committing to it.
+
+## Rollback
+
+Nothing here is destructive or irreversible: the D1 database can be dropped with
+`d1_database_delete` with zero data loss (it's empty), and removing the
+`d1_databases` block from `wrangler.jsonc` (plus the two new routes) returns the
+Worker to exactly its pre-trial state.

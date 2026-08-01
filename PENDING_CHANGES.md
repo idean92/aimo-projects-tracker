@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | Built + tested, not deployed to Access |
 | P3 | Reskin refinement pass (accent bars, colored borders, orange nav-active, header button fix) | ✅ Shipped (v1.3) |
 | P2 | Purple design-system reskin (matching Safety Tracker) | ✅ Shipped (v1.2) |
 | P1 | In-app feedback button + Cloudflare/Notion endpoint | ✅ Shipped and fully working (v1.1) |
@@ -19,7 +20,19 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
-_(none currently in progress)_
+- **P4 — D1 + Cloudflare Access trial.** Root cause: Supabase free tier caps at 2
+  active projects; had 3 (AIMO-SMS-Tracker, AIMO-Projects-Tracker, wealth-tracker).
+  Two options drafted (Supabase schema-consolidation into AIMO-SMS-Tracker, or
+  migrate AIMO-Projects-Tracker off Supabase entirely to D1 + Cloudflare Access,
+  trialed here since it's empty/no live users). Owner chose the D1 path. Built:
+  D1 database + schema (`migrations/0001_init.sql`), JWT verification module
+  (`src/access.js`), two new Worker routes (`/api/team-state`, `/api/app-state`).
+  Tested: 6/6 JWT-verification checks (valid/tampered/expired/wrong-audience/
+  unknown-key), plus direct D1-level query isolation between two synthetic users.
+  Not yet deployed to a real Cloudflare Access application (dashboard-only step,
+  no API path) and not wired into the app's UI — see `docs/D1-TRIAL.md` for full
+  status and the exact remaining manual steps. AIMO-SMS-Tracker (live Safety
+  Tracker data) was not touched.
 
 ## ✅ Shipped
 - **P3 — Reskin refinement pass** (v1.3, 01 Aug 2026, built directly from owner
