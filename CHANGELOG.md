@@ -27,7 +27,8 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
     this scope explicitly.
 - QA: headless screenshots (homepage, sidebar stat close-up, KPI dashboard), 0
   console/page errors, stylesheet brace-balance check.
-- Not shipped — working copy only, per `CLAUDE.md`.
+- Shipped to https://aimo-projects-tracker.ideandaai.workers.dev on the owner's
+  explicit "deploy it".
 
 ## v1.2 — 01 Aug 2026
 - **Visual reskin: purple "lavender" design system**, matching the look documented

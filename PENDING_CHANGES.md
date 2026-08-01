@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P3 | Reskin refinement pass (accent bars, colored borders, orange nav-active, header button fix) | Built (v1.3), not deployed |
+| P3 | Reskin refinement pass (accent bars, colored borders, orange nav-active, header button fix) | ✅ Shipped (v1.3) |
 | P2 | Purple design-system reskin (matching Safety Tracker) | ✅ Shipped (v1.2) |
 | P1 | In-app feedback button + Cloudflare/Notion endpoint | ✅ Shipped and fully working (v1.1) |
 
@@ -26,8 +26,9 @@ _(none currently in progress)_
   screenshots of the live Safety Tracker sibling). Accent bars on section headers,
   colored top borders on stat/KPI tiles, amber/orange active-nav-tab indicator, and
   a fix for the header's "Session" button (was unreadable — light-mode ghost style
-  on the new dark header). See `CHANGELOG.md` for detail. Built and QA'd; **not
-  shipped** (`public/index.html` untouched) pending explicit "ship it"/"deploy it".
+  on the new dark header). See `CHANGELOG.md` for detail. Built, QA'd, and shipped
+  to `public/index.html` on the owner's explicit "deploy this too" — pushed to
+  https://aimo-projects-tracker.ideandaai.workers.dev.
 - **P2 — Purple design-system reskin** (v1.2, 01 Aug 2026, owner-supplied design
   doc, built directly on explicit request). Full palette/gradient/shape/shadow
   overhaul matching the Safety Tracker sibling's look — see `CHANGELOG.md` for
