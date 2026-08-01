@@ -53,9 +53,11 @@ Notion's file-upload API) is a follow-up, not built.
   no `main` branch in this repo yet (everything so far has been pushed straight to
   this working branch). If/when this branch is merged into a real `main`, repoint the
   Worker's production branch in Settings → Builds.
-- ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` not set** — see "Feedback
-  endpoint setup" above. Until both are set, `/api/feedback` returns 503 (the app
-  itself works fine; only feedback submission is affected).
+- ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` set under Settings → Build →
+  Variables and secrets** (01 Aug 2026), but `/api/feedback` still returned 503
+  ("not configured yet") on first test — likely needs a fresh
+  build/deploy to actually apply to the running Worker. Triggering a rebuild to
+  confirm.
 - No custom domain added — the `workers.dev` URL is the only way to reach it. Add one
   later in Settings → Domains & Routes if desired.
 
