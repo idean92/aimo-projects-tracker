@@ -3,6 +3,32 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v1.3 — 01 Aug 2026
+- **Reskin refinement pass**, matching specific patterns the owner pointed out from
+  the live Safety Tracker sibling (screenshots, not just the written design doc):
+  - Section headers (`.section-lbl`/`.sec-label`/`.info-panel-title`) now get a
+    small purple accent bar before the label text, matching the sibling's card-header
+    system.
+  - Sidebar status counts (`.sb-stat`) and KPI scorecards (`.kpi-card.rag-*`) get a
+    colored top border matching their semantic status (green/blue/red/slate,
+    green/amber/red) — was previously just colored number text.
+  - Tab-bar "active" indicator changed from purple to amber/orange, to distinguish
+    "current location" from the purple used for primary actions/selected filters —
+    matches the sibling's two-accent convention.
+  - Fixed the header's "Session" button, which used the light-mode `.btn-ghost`
+    style (dark text, faint border) and was nearly unreadable against the new dark
+    purple header — added `.btn-ghost-dark` (translucent white, matching the
+    existing `.vp-nav-btn` verify-mode pattern) and applied it there.
+  - Minor: the "overdue" forecast-date warning text now uses `var(--amber)` instead
+    of a hardcoded old-amber hex.
+  - Scope note: did not build new dashboard-style widgets (donut/bar charts, a
+    dedicated "Command Dashboard" page) — those don't have an equivalent in AIMO
+    Tracker today and would be a feature addition, not a reskin; owner confirmed
+    this scope explicitly.
+- QA: headless screenshots (homepage, sidebar stat close-up, KPI dashboard), 0
+  console/page errors, stylesheet brace-balance check.
+- Not shipped — working copy only, per `CLAUDE.md`.
+
 ## v1.2 — 01 Aug 2026
 - **Visual reskin: purple "lavender" design system**, matching the look documented
   for the Safety Tracker sibling (see the design doc the owner supplied). AIMO

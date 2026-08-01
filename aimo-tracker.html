@@ -969,6 +969,7 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .btn{padding:6px 14px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;gap:6px;font-family:inherit;}
 .btn-primary{background:var(--accent);color:#fff;}.btn-primary:hover{background:#5a2872;}.btn-primary:active{background:#4a1f5e;}
 .btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border);}.btn-ghost:hover{background:var(--bg-hover);color:var(--text-1);}
+.btn-ghost-dark{background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.25);}.btn-ghost-dark:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4);color:#fff;}
 .btn-danger{background:var(--red-lo);color:var(--red);border:1px solid rgba(192,57,43,.25);}.btn-danger:hover{background:rgba(192,57,43,.25);}
 .btn-sm{padding:5px 10px;font-size:11px;}.btn-xs{padding:3px 8px;font-size:10.5px;}
 
@@ -996,7 +997,11 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .sb-filter{padding:3px 9px;border-radius:8px;font-size:10.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-3);transition:all .12s;font-family:inherit;}
 .sb-filter:hover,.sb-filter.active{background:var(--accent);border-color:var(--accent);color:#fff;}
 .sb-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border-faint);border-bottom:1px solid var(--border);flex-shrink:0;}
-.sb-stat{background:var(--bg-elevated);padding:8px 6px;text-align:center;}
+.sb-stat{background:var(--bg-elevated);padding:8px 6px;text-align:center;border-top:3px solid transparent;}
+.sb-stat.s-ot{border-top-color:var(--green);}
+.sb-stat.s-ah{border-top-color:var(--blue);}
+.sb-stat.s-dl{border-top-color:var(--red);}
+.sb-stat.s-cp{border-top-color:var(--slate);}
 .sb-stat-val{font-size:18px;font-weight:700;line-height:1;}
 .sb-stat-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-top:2px;}
 .sb-stat.s-ot .sb-stat-val{color:var(--green);}
@@ -1084,7 +1089,7 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .tab-bar{display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:var(--bg-elevated);flex-shrink:0;overflow-x:auto;}
 .tab-btn{padding:11px 16px;font-size:11.5px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-3);font-family:inherit;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px;}
 .tab-btn:hover{color:var(--text-2);background:var(--bg-hover);}
-.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-btn.active{color:var(--amber);border-bottom-color:var(--amber);}
 .tab-badge{padding:1px 5px;border-radius:999px;font-size:9px;font-weight:700;background:var(--border-faint);color:var(--text-3);}
 .tab-badge.complete{background:var(--green-lo);color:var(--green);}
 .tab-content{flex:1;overflow-y:auto;}
@@ -1134,7 +1139,8 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 /* Right info panel */
 .ov-right{display:flex;flex-direction:column;gap:14px;}
 .info-panel{background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
-.info-panel-title{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);margin-bottom:10px;}
+.info-panel-title{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.info-panel-title::before{content:'';width:3px;height:12px;border-radius:2px;background:var(--accent);flex-shrink:0;}
 .info-row{display:flex;justify-content:space-between;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border-faint);font-size:12px;gap:8px;}
 .info-row:last-child{border-bottom:none;padding-bottom:0;}
 .info-key{color:var(--text-2);flex-shrink:0;}
@@ -1144,6 +1150,7 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .map-lbl{padding:8px 12px;font-size:9.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.6px;border-top:1px solid var(--border);}
 .desc-text{font-size:12px;color:var(--text-2);line-height:1.65;}
 .section-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);display:flex;align-items:center;gap:10px;}
+.section-lbl::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--accent);flex-shrink:0;}
 .section-lbl::after{content:'';flex:1;height:1px;background:var(--border);}
 
 /* ── DOCUMENT TAB ─── */
@@ -1154,6 +1161,7 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .doc-stat-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);margin-top:3px;}
 .v-green{color:var(--green)!important;}.v-amber{color:var(--amber)!important;}.v-red{color:var(--red)!important;}
 .sec-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);display:flex;align-items:center;gap:10px;}
+.sec-label::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--accent);flex-shrink:0;}
 .sec-label::after{content:'';flex:1;height:1px;background:var(--border);}
 /* Doc table */
 .doc-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}
@@ -1298,9 +1306,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;
 .kpi-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
 .kpi-card{border-radius:12px;padding:14px 16px;border:1px solid var(--border);background:var(--bg-elevated);transition:border-color .15s,box-shadow .15s;cursor:pointer;}
 .kpi-card:hover{box-shadow:var(--shadow-sm);}
-.kpi-card.rag-green{background:rgba(10,170,110,.06);border-color:rgba(10,170,110,.28);}
-.kpi-card.rag-amber{background:rgba(184,114,10,.06);border-color:rgba(184,114,10,.28);}
-.kpi-card.rag-red{background:rgba(200,48,44,.06);border-color:rgba(200,48,44,.28);}
+.kpi-card.rag-green{background:rgba(10,170,110,.06);border-color:rgba(10,170,110,.28);border-top:3px solid #0aaa6e;}
+.kpi-card.rag-amber{background:rgba(184,114,10,.06);border-color:rgba(184,114,10,.28);border-top:3px solid #b8720a;}
+.kpi-card.rag-red{background:rgba(200,48,44,.06);border-color:rgba(200,48,44,.28);border-top:3px solid #c8302c;}
 .kpi-num-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);}
 .kpi-rag-pill{font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text-3);background:var(--bg-elevated);}
 .kpi-rag-pill.rag-green{background:rgba(10,170,110,.12);border-color:rgba(10,170,110,.3);color:#1a7a4a;}
@@ -1516,7 +1524,7 @@ body.verify-mode .header,body.verify-mode .app-shell{display:none!important;}
 /* ── DELAY ANALYTICS ─── */
 .analytics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;}
 .info-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;}
-.info-panel-title{font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;}
+.info-panel-title{font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
 .aging-table{width:100%;border-collapse:collapse;font-size:11.5px;}
 .aging-table th,.aging-table td{padding:5px 8px;text-align:left;border-bottom:1px solid var(--border-faint);}
 .aging-table th{font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.6px;}
@@ -1722,10 +1730,10 @@ body.verify-mode .fb-fab{display:none!important;}
     </div>
   </div>
   <div class="header-right">
-    <button id="sessionBtn" class="btn btn-ghost btn-sm" onclick="openSessionModal()" title="Back up or restore session data" style="gap:5px;">
+    <button id="sessionBtn" class="btn btn-ghost-dark btn-sm" onclick="openSessionModal()" title="Back up or restore session data" style="gap:5px;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
       Session
-      <span id="sessionDirtyDot" title="You have changes that haven’t been exported to a Session file yet" style="display:none;width:7px;height:7px;border-radius:50%;background:#c87000;margin-left:1px;"></span>
+      <span id="sessionDirtyDot" title="You have changes that haven’t been exported to a Session file yet" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-left:1px;"></span>
     </button>
     <button class="btn btn-primary" onclick="openAddModal()">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -2201,7 +2209,7 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v1.2';
+const APP_VERSION  = 'v1.3';
 const APP_DATE     = '01 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
@@ -2783,7 +2791,7 @@ function renderHomepage() {
           </div>
           <div class="card-row">Current: <b>${currMs.label}</b></div>
           ${cd?(cd.overdue
-            ? `<div class="card-row" style="color:#c87000;font-weight:600;" title="Forecast completion date has passed but the project isn't complete — update the milestone forecast dates.">${cd.label}: <b>${fmtDate(cd.date)}</b> &#9888; overdue</div>`
+            ? `<div class="card-row" style="color:var(--amber);font-weight:600;" title="Forecast completion date has passed but the project isn't complete — update the milestone forecast dates.">${cd.label}: <b>${fmtDate(cd.date)}</b> &#9888; overdue</div>`
             : `<div class="card-row">${cd.label}: <b>${fmtDate(cd.date)}</b></div>`):''}
           ${kpiStrip}
         </div>
@@ -2858,7 +2866,7 @@ function renderProjectDetail() {
     ${p.category?`<span class="cat-pill">${esc(p.category)}</span>`:''}
     <span class="hdr-meta-txt">${pr.pct}% · ${pr.done}/${pr.total} milestones</span>
     ${cd?(cd.overdue
-      ? `<span class="hdr-meta-txt" style="color:#c87000;font-weight:600;" title="The forecast completion date has already passed but the project isn't complete — update the milestone forecast dates.">· ${cd.label}: <b>${fmtDate(cd.date)}</b> &#9888; overdue — update forecast</span>`
+      ? `<span class="hdr-meta-txt" style="color:var(--amber);font-weight:600;" title="The forecast completion date has already passed but the project isn't complete — update the milestone forecast dates.">· ${cd.label}: <b>${fmtDate(cd.date)}</b> &#9888; overdue — update forecast</span>`
       : `<span class="hdr-meta-txt">· ${cd.label}: <b>${fmtDate(cd.date)}</b></span>`):''}
   `;
   renderTabBar(p); renderTab();
