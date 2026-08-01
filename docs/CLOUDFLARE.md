@@ -19,23 +19,27 @@ shared with those.
   Notion API. Needs two environment variables set on the Worker before it actually
   works (see "Feedback endpoint setup" below).
 
-## Feedback endpoint setup — manual, one-time
-Two things need to be configured on the Worker (dashboard → your Worker → Settings →
-Variables and Secrets, or `wrangler secret put` / `wrangler.jsonc` `vars`):
+## Feedback endpoint setup — done ✅ (01 Aug 2026)
+Both variables are set and confirmed working:
+- **`NOTION_API_KEY`** (secret) — a Notion internal integration, shared with the
+  Feedback Inbox database via its `•••` → Connections menu.
+- **`NOTION_FEEDBACK_DATABASE_ID`** (plain var) — `94824d19762d4feb9cbee64de525930b`.
 
-1. **`NOTION_API_KEY`** (secret, never commit this) — create a Notion **internal
-   integration** at https://www.notion.so/my-integrations, copy its secret, then open
-   the **Feedback Inbox** database in Notion → `•••` → **Connections** → add that
-   integration. Without this share step, the API key gets a 404 even though it's
-   valid — Notion integrations only see pages/databases explicitly shared with them.
-2. **`NOTION_FEEDBACK_DATABASE_ID`** (plain var, not secret) — `94824d19762d4feb9cbee64de525930b`
-   (from the database URL in `docs/NOTION.md`). Double check this is accepted as a
-   classic `database_id` when you first test it; if Notion rejects it, use the fetch
-   tool on the database URL to confirm the right ID.
+**Important gotcha, worth remembering:** these had to be set under **Settings →
+"Variables and secrets"** (the top-level one in the Settings sub-nav) — **not** the
+similarly-named "Variables and secrets" panel nested under **Settings → Build**. The
+Build one only feeds the CI build process; it does not reach the Worker's runtime
+`env`. Setting them there first produced a persistent `503` even after a fresh
+rebuild — moving them to the top-level Runtime panel fixed it immediately, no
+redeploy needed.
+
+End-to-end tested via a direct `POST /api/feedback` call and confirmed the resulting
+row in the Feedback Inbox database (via Notion's data-source query) — comment,
+context, and status all populated correctly.
 
 Until both are set, `/api/feedback` returns a `503` and the app shows the submitter a
 graceful "isn't connected yet" message — no errors, no lost work, the app just can't
-actually deliver feedback yet.
+actually deliver feedback yet. (This is now moot — see above.)
 
 **Screenshots aren't uploaded to Notion yet** — the endpoint files the text feedback
 and leaves a comment on the new page noting a screenshot was attached, since Notion's
@@ -53,17 +57,16 @@ Notion's file-upload API) is a follow-up, not built.
   no `main` branch in this repo yet (everything so far has been pushed straight to
   this working branch). If/when this branch is merged into a real `main`, repoint the
   Worker's production branch in Settings → Builds.
-- ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` set under Settings → Build →
-  Variables and secrets** (01 Aug 2026), but `/api/feedback` still returned 503
-  ("not configured yet") on first test — likely needs a fresh
-  build/deploy to actually apply to the running Worker. Triggering a rebuild to
-  confirm.
+- ✅ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` set and working** — see
+  "Feedback endpoint setup" above for the exact panel that mattered.
+- ✅ **Feedback pipeline confirmed end-to-end** (01 Aug 2026): submitted via a direct
+  API call, verified the row landed in the Feedback Inbox database.
 - No custom domain added — the `workers.dev` URL is the only way to reach it. Add one
   later in Settings → Domains & Routes if desired.
 
 There is no Cloudflare MCP tool to enable a workers.dev subdomain, add a custom
-domain, or set Worker environment variables/secrets — all three remain dashboard-only
-steps for the owner to complete.
+domain, or set Worker environment variables/secrets — all three were dashboard-only
+steps the owner completed manually.
 
 ## R2 / photo storage
 Explicitly skipped for now (per your direction) — AIMO Tracker has no photo-capture

@@ -24,10 +24,9 @@ databases), per the same pattern described in
 ## Status
 - ✅ Notion pages/database created (2026-08-01).
 - ✅ In-app "Send feedback" button + modal built (`aimo-tracker.html`, v1.1).
-- ✅ Feedback-capture endpoint built (`src/worker.js`, `POST /api/feedback`) — but
-  **not live yet**: needs the Cloudflare Worker deployed/connected (`docs/CLOUDFLARE.md`)
-  and a Notion internal integration created + shared with this database (also in
-  `docs/CLOUDFLARE.md`, "Feedback endpoint setup").
+- ✅ Feedback-capture endpoint built and **live** (`src/worker.js`, `POST /api/feedback`
+  on https://aimo-projects-tracker.ideandaai.workers.dev) — end-to-end tested
+  01 Aug 2026, confirmed a real submission lands in this database correctly.
 - ⬜ Screenshot upload to Notion — submissions note "screenshot attached" as a comment
   for now; actual image upload isn't wired up (see `docs/CLOUDFLARE.md`).
 - ⬜ Daily/recurring triage task that reviews `Reviewed = false` rows and files them
@@ -35,6 +34,8 @@ databases), per the same pattern described in
   `docs/reference/safety-tracker-handoff.md` § 8 for that pattern).
 
 ## How to query this database
-Once the feedback button + endpoint exist, triage can use the Notion MCP tools
-(`notion-fetch` on the data source URL above, or `notion-search`) to find rows with
-`Reviewed = false`, the same way the sibling project's daily task does.
+Use `notion-query-data-sources` (SQL mode) against
+`collection://2597b3b1-5765-455d-b9f5-60531f7c809b` — e.g.
+`SELECT * FROM "collection://2597b3b1-5765-455d-b9f5-60531f7c809b" WHERE Reviewed = '__NO__'`
+— to find unreviewed rows for triage, the same way the sibling project's daily task
+does.
