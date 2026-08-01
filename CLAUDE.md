@@ -8,26 +8,29 @@ approval/design/execution lifecycle.
 
 The app is a single self-contained file, `aimo-tracker.html` (~13,400 lines: markup +
 CSS + vanilla JS all inline, no build step, no framework, no npm runtime dependencies).
-Data lives entirely in the browser via `localStorage`
+Data currently lives entirely in the browser via `localStorage`
 (`aimo_projects` / `aimo_governance` / `aimo_kpi_settings`); the only backup mechanism
-is a manual session export/import (`downloadSession()` / `loadSessionFile()`) — there
-is no cloud sync or hosted backend for this app.
+is a manual session export/import (`downloadSession()` / `loadSessionFile()`). A
+Supabase project exists for future cloud sync (see `docs/SUPABASE.md`) but the app has
+no code yet that talks to it — nothing has changed for end users until that's built.
 
 See `docs/ARCHITECTURE.md` for the detailed architecture cheat-sheet, the data-model
 gotchas, and how this project relates to its sibling, AIMO Safety Tracker.
 
 ## Deployment
-There is no hosting/deploy pipeline wired up for this app yet — unlike the sibling
-AIMO Safety Tracker (Cloudflare + Supabase, see `docs/reference/`), AIMO Tracker is
-currently distributed as a plain static file: run locally via
-`python3 -m http.server` (see `.claude/launch.json`), or handed to the owner directly /
-hosted on SharePoint (see `AIMO_Tracker_IT_SharePoint_Brief.docx` if present in the
-folder). Until a real deploy target exists:
-- "Deploying" a change means committing it here, then handing the owner an updated
-  `aimo-tracker.html` (or uploading it wherever it ends up actually hosted).
-- If this later gets wired to real hosting with a Git integration, adopt the same
-  "a push to main is a deploy" model the Safety Tracker sibling uses — update this
-  section when that happens.
+Independent Cloudflare/Supabase/Notion resources exist for this project now, separate
+from the sibling's (see `docs/CLOUDFLARE.md`, `docs/SUPABASE.md`, `docs/NOTION.md`).
+Hosting is **not fully live yet** — `wrangler.jsonc` + `public/index.html` are in the
+repo, but connecting the Cloudflare Worker to this GitHub repo is a dashboard-only
+step only the owner can do (no API path exists); see `docs/CLOUDFLARE.md` for the
+exact steps. Once that's connected:
+- **A push to `main` is a deploy** — same model as the Safety Tracker sibling. Nothing
+  else to trigger.
+- "Deploying" a change means: copy `aimo-tracker.html` (the working copy) →
+  `public/index.html` (the deploy copy) → commit → push to `main` — only on an
+  explicit "ship it," per the hard rule below.
+Until the Cloudflare connection is made, treat it as still not live: committing here
+does not put anything in front of users yet.
 
 ## Hard rule: no version changes or deploys without explicit approval
 No new version of the app is built, updated, or deployed unless the owner has
