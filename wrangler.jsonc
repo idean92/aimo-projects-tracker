@@ -2,7 +2,10 @@
   "name": "aimo-projects-tracker",
   // Update to today's date if Wrangler complains this is stale.
   "compatibility_date": "2026-08-01",
+  "main": "./src/worker.js",
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
   }
 }

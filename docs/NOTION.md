@@ -23,9 +23,13 @@ databases), per the same pattern described in
 
 ## Status
 - ✅ Notion pages/database created (2026-08-01).
-- ⬜ In-app "Send feedback" button — not built yet.
-- ⬜ Feedback-capture endpoint (Cloudflare Pages Function → this database) — not
-  built yet; needs the Cloudflare setup below first.
+- ✅ In-app "Send feedback" button + modal built (`aimo-tracker.html`, v1.1).
+- ✅ Feedback-capture endpoint built (`src/worker.js`, `POST /api/feedback`) — but
+  **not live yet**: needs the Cloudflare Worker deployed/connected (`docs/CLOUDFLARE.md`)
+  and a Notion internal integration created + shared with this database (also in
+  `docs/CLOUDFLARE.md`, "Feedback endpoint setup").
+- ⬜ Screenshot upload to Notion — submissions note "screenshot attached" as a comment
+  for now; actual image upload isn't wired up (see `docs/CLOUDFLARE.md`).
 - ⬜ Daily/recurring triage task that reviews `Reviewed = false` rows and files them
   into `PENDING_CHANGES.md` — not set up yet (the Safety Tracker sibling has one; see
   `docs/reference/safety-tracker-handoff.md` § 8 for that pattern).
