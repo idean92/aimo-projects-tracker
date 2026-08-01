@@ -3,6 +3,37 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v1.2 — 01 Aug 2026
+- **Visual reskin: purple "lavender" design system**, matching the look documented
+  for the Safety Tracker sibling (see the design doc the owner supplied). AIMO
+  Tracker previously had a flat, blue-gray look predating that sibling's V4.0
+  dashboard-card redesign; this brings it in line.
+  - New color palette: lavender-neutral surfaces, `#6F328A` purple accent (was
+    blue-gray `#5980a6`), muted semantic status colors.
+  - Brand gradient (`#32183C → #472358 → #6F328A`) applied to the header, logo
+    mark, verify-mode top bar, and feedback FAB.
+  - Shape: buttons/cards/modals/inputs now soft-rounded (previously
+    `border-radius:0` everywhere) — buttons 10px, KPI/stat cards 12px, project
+    cards 18px, modals 20px; all pill/badge elements fully rounded.
+  - Shadows switched from neutral gray to purple-tinted (`rgba(50,24,60,…)`),
+    consistent with the sibling's "purple ink" elevation style.
+  - Typography (Barlow / Barlow Condensed, self-hosted) was already correct —
+    no font changes needed.
+- Reviewed by an independent pass before finalizing: caught and fixed two real
+  bugs from the mechanical rollout — `.btn-primary` was still reverting to the
+  old blue-gray on hover/press, and `.card-visual`'s square top corners were
+  poking out past the now-rounded `.project-card` — plus a handful of smaller
+  leftover old-color references and a `--text-3` contrast tweak.
+- **Known, accepted scope boundary:** roughly 20-30 other hardcoded color
+  literals elsewhere in the file (KPI RAG-status tints, governance status
+  colors, comment-class colors, gantt bar colors) still use the older, more
+  saturated green/amber/red rather than the new muted set. Cosmetically minor
+  — not touched, to keep this change reviewable; flagged as a possible follow-up.
+- QA: headless Playwright screenshots across homepage, project detail, edit
+  modal, and KPI dashboard; 0 console/page errors; brace-balance check on the
+  full stylesheet.
+- Not shipped — working copy only, per `CLAUDE.md`.
+
 ## v1.1 — 01 Aug 2026
 - **New: in-app feedback button.** A floating "Send feedback" button (bottom-right,
   hidden in `?verify` pop-out and print) opens a modal for a free-text comment plus
