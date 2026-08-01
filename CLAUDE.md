@@ -1,0 +1,91 @@
+# AIMO Tracker — Working Notes
+
+## What this is
+AIMO Tracker is a project-management tool for the AIMO (airport infrastructure /
+master-planning) team at King Salman International Airport (KSIA). It tracks MOC
+(Management of Change) projects, governance actions, and KPIs through their
+approval/design/execution lifecycle.
+
+The app is a single self-contained file, `aimo-tracker.html` (~13,400 lines: markup +
+CSS + vanilla JS all inline, no build step, no framework, no npm runtime dependencies).
+Data lives entirely in the browser via `localStorage`
+(`aimo_projects` / `aimo_governance` / `aimo_kpi_settings`); the only backup mechanism
+is a manual session export/import (`downloadSession()` / `loadSessionFile()`) — there
+is no cloud sync or hosted backend for this app.
+
+See `docs/ARCHITECTURE.md` for the detailed architecture cheat-sheet, the data-model
+gotchas, and how this project relates to its sibling, AIMO Safety Tracker.
+
+## Deployment
+There is no hosting/deploy pipeline wired up for this app yet — unlike the sibling
+AIMO Safety Tracker (Cloudflare + Supabase, see `docs/reference/`), AIMO Tracker is
+currently distributed as a plain static file: run locally via
+`python3 -m http.server` (see `.claude/launch.json`), or handed to the owner directly /
+hosted on SharePoint (see `AIMO_Tracker_IT_SharePoint_Brief.docx` if present in the
+folder). Until a real deploy target exists:
+- "Deploying" a change means committing it here, then handing the owner an updated
+  `aimo-tracker.html` (or uploading it wherever it ends up actually hosted).
+- If this later gets wired to real hosting with a Git integration, adopt the same
+  "a push to main is a deploy" model the Safety Tracker sibling uses — update this
+  section when that happens.
+
+## Hard rule: no version changes or deploys without explicit approval
+No new version of the app is built, updated, or deployed unless the owner has
+explicitly said to do so, in that specific instance. This overrides any other signal —
+a backlog item, a "next in sequence" version, or momentum from a prior task are never
+sufficient alone.
+- Do not edit code to implement a change until the owner has approved that specific
+  change.
+- Do not bump the version or hand over a new build until explicitly told to ship it —
+  even if already implemented. Approval-to-implement and approval-to-deploy are
+  separate green lights.
+- If in doubt, ask.
+
+## Git workflow
+- Commits in this repo are the version history now — no more hand-copying the file
+  before risky edits (that was the old process; see `docs/ARCHITECTURE.md`). Commit
+  before any risky edit so it stays revertible.
+- Pushing to the remote / opening a PR is not implicitly authorized by "build this" —
+  that's a separate instruction, same principle as the hard rule above.
+- Destructive git ops (force-push, history rewrite, branch deletion) require explicit
+  confirmation, always.
+
+## Feedback / change-request process
+There's no in-app feedback capture or Notion inbox wired up for this project yet (the
+Safety Tracker sibling has one — see `docs/reference/safety-tracker-handoff.md` §
+"Notion + feedback loop" for the pattern, if the owner ever wants the same thing built
+here). Until then, change requests come directly from the owner in conversation. The
+same discipline still applies:
+1. Consolidate a request into `PENDING_CHANGES.md` as a new item (short
+   root-cause/approach note) — do not touch `aimo-tracker.html` yet.
+2. Build only on an explicit go ("go", "build it", "start", "implement").
+3. Once implemented and QA'd, bump `APP_VERSION` / `APP_DATE` (top of the file,
+   currently `v1.0` / 07 Jul 2026) and add a `CHANGELOG.md` entry — it still isn't
+   shipped/handed over until a separate, explicit "ship it".
+4. Update `PENDING_CHANGES.md` to mark the item shipped, as part of the same change.
+
+## Code review before deploying
+Spawn a review subagent on a stronger model before shipping when:
+- Major version bump (left-most version number changes, e.g. v1.x → v2.0).
+- The change touches sensitive logic: `stageDocs` mutation (see the gotcha in
+  `docs/ARCHITECTURE.md`), KPI scoring, or session import/export (data-loss risk).
+- It feels architecturally significant or risky, even if technically minor.
+Skip review for minor/patch bumps, styling, copy edits, small isolated fixes.
+
+## Versioning rules
+- Every change is recorded in `CHANGELOG.md` (newest at top). No ship without an
+  entry.
+- Version `X.Y`: minor change → bump `Y`. Major (data-model/behavior/removal) → roll
+  `X`, reset `Y`.
+- `const APP_VERSION` and the sidebar version badge (`#appVersionBadge`) must stay in
+  sync with the latest `CHANGELOG.md` entry.
+- Never require the owner to wipe `localStorage`/session data to adopt a new version.
+
+## Related project
+AIMO Safety Tracker (`aimo-safety-tracker.html`, its own repo) is a sibling that split
+off from this codebase on 2026-07-19 and has since diverged significantly — its own
+`localStorage` key (`aimo_safety_projects`), its own cloud deployment (Cloudflare +
+Supabase). If a request is about safety/MOC-risk/reporting/deck generation, it's almost
+certainly that project, not this one. See `docs/ARCHITECTURE.md` for the full picture
+and `docs/reference/` for that project's own process docs, kept here for cross-project
+context.
