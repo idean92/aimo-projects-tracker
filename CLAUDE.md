@@ -20,12 +20,11 @@ gotchas, and how this project relates to its sibling, AIMO Safety Tracker.
 ## Deployment
 Independent Cloudflare/Supabase/Notion resources exist for this project now, separate
 from the sibling's (see `docs/CLOUDFLARE.md`, `docs/SUPABASE.md`, `docs/NOTION.md`).
-The Cloudflare Worker is connected to this GitHub repo and auto-builds on push, but
-is **not reachable by anyone yet** — no public URL (`workers.dev` subdomain or custom
-domain) is enabled on it. It's also currently tracking the
-`claude/review-pending-context-jbjnrg` branch as production, not `main` (no `main`
-branch exists in this repo yet) — revisit once/if that branch is merged. See
-`docs/CLOUDFLARE.md` for exact status and next steps.
+The Cloudflare Worker is connected to this GitHub repo, auto-builds on push, and is
+now **live** at https://aimo-projects-tracker.ideandaai.workers.dev. It's currently
+tracking the `claude/review-pending-context-jbjnrg` branch as production, not `main`
+(no `main` branch exists in this repo yet) — revisit once/if that branch is merged.
+See `docs/CLOUDFLARE.md` for exact status and next steps.
 - **A push to the tracked branch is a deploy** — same "push is a deploy" model as the
   Safety Tracker sibling, just not on `main` yet.
 - "Deploying" a change means: copy `aimo-tracker.html` (the working copy) →

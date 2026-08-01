@@ -46,18 +46,18 @@ Notion's file-upload API) is a follow-up, not built.
 - ✅ **Worker created and connected** to `idean92/aimo-projects-tracker` via
   Cloudflare's Git integration (done manually in the dashboard — confirmed working,
   auto-builds on push).
+- ✅ **Live at https://aimo-projects-tracker.ideandaai.workers.dev** — `workers.dev`
+  subdomain enabled (Settings → Domains & Routes), confirmed loading the app
+  (v1.1, with the feedback button).
 - ⚠️ **Tracking branch `claude/review-pending-context-jbjnrg`, not `main`** — there is
   no `main` branch in this repo yet (everything so far has been pushed straight to
   this working branch). If/when this branch is merged into a real `main`, repoint the
   Worker's production branch in Settings → Builds.
-- ⚠️ **No public URL enabled** — the dashboard overview shows "No URLs enabled,"
-  `workers.dev` disabled, no custom domain. Nobody can reach the deployed app yet.
-  Fix in **Settings → Domains & Routes**: enable the `workers.dev` subdomain for
-  quick testing, and/or add a custom domain for real use.
 - ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` not set** — see "Feedback
-  endpoint setup" above. Until both are set, `/api/feedback` returns 503.
-- `public/index.html` now matches `aimo-tracker.html` (shipped 01 Aug 2026, v1.1) —
-  once a URL is enabled, the deployed site will show the feedback button.
+  endpoint setup" above. Until both are set, `/api/feedback` returns 503 (the app
+  itself works fine; only feedback submission is affected).
+- No custom domain added — the `workers.dev` URL is the only way to reach it. Add one
+  later in Settings → Domains & Routes if desired.
 
 There is no Cloudflare MCP tool to enable a workers.dev subdomain, add a custom
 domain, or set Worker environment variables/secrets — all three remain dashboard-only
