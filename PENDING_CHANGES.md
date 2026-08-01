@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P2 | Purple design-system reskin (matching Safety Tracker) | Built + reviewed (v1.2), not deployed |
+| P2 | Purple design-system reskin (matching Safety Tracker) | ✅ Shipped (v1.2) |
 | P1 | In-app feedback button + Cloudflare/Notion endpoint | ✅ Shipped and fully working (v1.1) |
 
 ## 🐛 Bugs
@@ -25,8 +25,9 @@ _(none currently in progress)_
   doc, built directly on explicit request). Full palette/gradient/shape/shadow
   overhaul matching the Safety Tracker sibling's look — see `CHANGELOG.md` for
   detail. Independently reviewed before finalizing; two real bugs found and fixed
-  (`.btn-primary` hover color, `.card-visual` corner clipping). Built and QA'd;
-  **not shipped** (`public/index.html` untouched) pending explicit "ship it".
+  (`.btn-primary` hover color, `.card-visual` corner clipping). Built, QA'd, and
+  shipped to `public/index.html` on the owner's explicit "deploy it" — pushed to
+  https://aimo-projects-tracker.ideandaai.workers.dev.
 - **P1 — In-app feedback button + endpoint** (v1.1, 01 Aug 2026). Floating button +
   modal in `aimo-tracker.html`, Cloudflare Worker endpoint (`src/worker.js`) filing
   into the Notion Feedback Inbox. Live at

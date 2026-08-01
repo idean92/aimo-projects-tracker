@@ -32,7 +32,8 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 - QA: headless Playwright screenshots across homepage, project detail, edit
   modal, and KPI dashboard; 0 console/page errors; brace-balance check on the
   full stylesheet.
-- Not shipped — working copy only, per `CLAUDE.md`.
+- Shipped to https://aimo-projects-tracker.ideandaai.workers.dev on the owner's
+  explicit "deploy it".
 
 ## v1.1 — 01 Aug 2026
 - **New: in-app feedback button.** A floating "Send feedback" button (bottom-right,
