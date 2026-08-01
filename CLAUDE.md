@@ -51,11 +51,12 @@ sufficient alone.
   confirmation, always.
 
 ## Feedback / change-request process
-There's no in-app feedback capture or Notion inbox wired up for this project yet (the
-Safety Tracker sibling has one — see `docs/reference/safety-tracker-handoff.md` §
-"Notion + feedback loop" for the pattern, if the owner ever wants the same thing built
-here). Until then, change requests come directly from the owner in conversation. The
-same discipline still applies:
+A Notion workspace mirroring the Safety Tracker's pattern exists for this project —
+see `docs/NOTION.md` for the page/database IDs. The **in-app feedback button and its
+Cloudflare Pages Function endpoint are not built yet**; the Notion side (Feedback
+Inbox database + Pending Changes page) is provisioned and ready for when that's
+implemented. Until the button exists, change requests still come directly from the
+owner in conversation. The same discipline applies either way:
 1. Consolidate a request into `PENDING_CHANGES.md` as a new item (short
    root-cause/approach note) — do not touch `aimo-tracker.html` yet.
 2. Build only on an explicit go ("go", "build it", "start", "implement").
