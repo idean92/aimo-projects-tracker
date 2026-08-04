@@ -2439,6 +2439,7 @@ let sbLastPulledAt = null; // updated_at of the last row we pulled/pushed — th
 let sbSyncing = false;
 let sbPulled = false; // true once a pull has completed at least once this session — pushes are held until then, so a slow/failed initial pull can never upsert-overwrite a teammate's row with stale local data
 let sbDirty = false; // true while a local edit hasn't been confirmed synced — refocus must not pull-and-clobber while this is set
+let sbEditGen = 0; // bumped on every sbSchedulePush() — lets an in-flight push detect a newer edit landed after it snapshotted state, so it doesn't clear sbDirty out from under that newer edit
 let sbNeedsRetryPush = false; // a push arrived while one was already in flight; debounce already cleared, so this flag is the only record of it
 let sbPushTimer = null;
 let sbSyncStatus = 'signed-out'; // signed-out | syncing | synced | conflict | error
@@ -2518,8 +2519,16 @@ async function cloudSignIn() {
 async function cloudSignOut() {
   if (!sbClient) return;
   try { await sbClient.auth.signOut(); } catch (e) {}
+  clearTimeout(sbPushTimer);
   sbUser = null;
   sbLastPulledAt = null;
+  // Reset every piece of per-session sync state — otherwise a stale sbPulled=true from the
+  // previous session would let a post-sign-in push race ahead of the new pull (with
+  // sbLastPulledAt now null, that race takes the upsert branch and can blind-overwrite the
+  // team's row), and a stale sbDirty would make the next sign-in's pull wrongly skip hydrating.
+  sbPulled = false;
+  sbDirty = false;
+  sbNeedsRetryPush = false;
   setSyncStatus('signed-out');
   closeCloudAuthModal();
 }
@@ -2527,6 +2536,7 @@ async function cloudSignOut() {
 function sbSchedulePush() {
   if (!sbClient || !sbUser) return; // no session yet — nothing to sync to
   sbDirty = true;
+  sbEditGen++;
   clearTimeout(sbPushTimer);
   sbPushTimer = setTimeout(sbPushNow, 800);
 }
@@ -2535,8 +2545,10 @@ async function sbPushNow() {
   if (!sbClient || !sbUser) return;
   if (!sbPulled) return; // initial pull hasn't resolved yet — stay dirty, sbPullNow() flushes this once it lands
   if (sbSyncing) { sbNeedsRetryPush = true; return; } // already mid-push — don't drop this write, retry once it finishes
+  clearTimeout(sbPushTimer); // this call already covers whatever the pending timer was for
   sbSyncing = true;
   setSyncStatus('syncing');
+  const myGen = sbEditGen; // snapshot — if a newer edit lands before this push resolves, don't let this push's success wipe sbDirty out from under it
   const payload = { projects: state.projects, governance: govState, kpiSettings: kpiSettings };
   try {
     if (!sbLastPulledAt) {
@@ -2548,7 +2560,7 @@ async function sbPushNow() {
         .single();
       if (error) throw error;
       sbLastPulledAt = data.updated_at;
-      sbDirty = false;
+      if (sbEditGen === myGen) sbDirty = false;
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     } else {
       // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
@@ -2564,14 +2576,15 @@ async function sbPushNow() {
         // than silently clobbering it — force:true because this pull must win over
         // the local edit that just lost the race (that's the whole point of this
         // path), unlike a passive background pull which defers to a dirty local edit.
-        sbSyncing = false;
+        // (sbSyncing stays true through this awaited pull, closing the reentrancy window
+        // where a queued retry could push the stale losing token mid-resolution.)
         await sbPullNow(true);
         setSyncStatus('conflict');
         alert('Someone else\'s changes were just loaded from the cloud (your edit may not have been saved) — please check your last change and redo it if it\'s missing.');
         return;
       }
       sbLastPulledAt = data.updated_at;
-      sbDirty = false;
+      if (sbEditGen === myGen) sbDirty = false;
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     }
   } catch (err) {
@@ -2588,18 +2601,19 @@ async function sbPullNow(force) {
   try {
     const { data, error } = await sbTable().select('data, updated_at').eq('id', 'default').maybeSingle();
     if (error) throw error;
+    sbPulled = true; // mark true right after the fetch itself succeeds — a throw below (malformed
+                      // remote blob) must not permanently block all future pushes
     if (data) {
-      if (sbDirty && !force) {
-        // A local edit is already queued to push and hasn't been confirmed synced —
-        // don't clobber it with this (possibly now-stale) remote blob. Just adopt the
-        // CAS token so the pending push compares against the row we just saw; if the
-        // row changed again in the meantime, that push's own CAS/conflict handling
-        // catches it (pull-and-alert), so this never silently drops someone else's work.
-        sbLastPulledAt = data.updated_at;
-      } else {
-        // force=true (called from sbPushNow's conflict branch) intentionally overrides
-        // sbDirty: the local edit just lost the CAS race and is what the alert below
-        // tells the user to re-check/redo, so remote must win here regardless.
+      // If there's an unsynced local edit, only skip applying remote data when nothing has
+      // actually changed on the server since our last known baseline (safe — the pending push
+      // will land cleanly). If the server DID change since then, this is a real conflict:
+      // silently "adopting" that newer token without applying its data would let the pending
+      // push's CAS succeed and overwrite a teammate's change we never even looked at. So treat
+      // it like the explicit conflict-resolution path instead — force remote in and alert.
+      const noServerChange = sbDirty && data.updated_at === sbLastPulledAt;
+      const skipApply = sbDirty && !force && noServerChange;
+      const wasRealConflict = sbDirty && !force && !skipApply;
+      if (!skipApply) {
         _sbApplyingRemote = true;
         try {
           const d = data.data || {};
@@ -2619,13 +2633,17 @@ async function sbPullNow(force) {
         renderSidebar();
         setBackupDirty(true);
       }
-      setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      if (wasRealConflict) {
+        setSyncStatus('conflict');
+        alert('Someone else\'s changes were just loaded from the cloud (your edit may not have been saved) — please check your last change and redo it if it\'s missing.');
+      } else {
+        setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      }
     } else {
       // No row yet (first-ever sign-in for this team) — nothing to pull.
       setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
     }
-    sbPulled = true;
-    if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight — flush it now that we have a baseline
+    if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight (or survived a skip-apply above) — flush it now that we have a baseline
   } catch (err) {
     setSyncStatus('error', 'Couldn\'t reach the cloud — working from local data.');
     // sbPulled stays as-is: false blocks any push until a pull actually succeeds
@@ -2654,9 +2672,12 @@ function initCloudSync() {
   }).catch(() => setSyncStatus('error', 'Couldn\'t restore your session — sign in again.'));
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !sbUser || sbSyncing) return;
-    // If there's an unsynced local edit, push it (which itself pulls-and-alerts on a real
-    // conflict) instead of blindly pulling and overwriting that edit.
-    if (sbDirty) sbPushNow(); else sbPullNow();
+    // If there's an unsynced local edit AND we have an established baseline, push it (which
+    // itself pulls-and-alerts on a real conflict) instead of blindly pulling and overwriting
+    // that edit. Otherwise pull — this is also the recovery path if the very first pull ever
+    // failed (sbPulled still false): without it, a dirty edit would route to sbPushNow(), which
+    // refuses to run until pulled, permanently stalling sync for the rest of the session.
+    if (sbDirty && sbPulled) sbPushNow(); else sbPullNow();
   });
 }
 
