@@ -1,14 +1,7 @@
-// AIMO Tracker Worker: serves the static app and handles:
-//   POST /api/feedback     -> files submissions into the Notion "Feedback
-//                             Inbox" database (see docs/NOTION.md).
-//   GET/PUT /api/team-state -> D1-backed shared team blob (any authenticated
-//                              Cloudflare Access user; see docs/D1-TRIAL.md).
-//   GET/PUT /api/app-state  -> D1-backed per-user blob, scoped strictly by
-//                              the verified Access identity (see src/access.js
-//                              and docs/D1-TRIAL.md for the trust boundary).
-// See docs/CLOUDFLARE.md for the required environment variables/secrets.
-
-import { requireAccessIdentity } from './access.js';
+// AIMO Tracker Worker: serves the static app and handles POST /api/feedback,
+// filing submissions into the Notion "Feedback Inbox" database (see
+// docs/NOTION.md for its schema/IDs). See docs/CLOUDFLARE.md for the
+// required environment variables/secrets this needs to actually work.
 
 const MAX_COMMENT_LEN = 2000;
 const MAX_CONTEXT_LEN = 300;
@@ -22,12 +15,6 @@ export default {
         return json({ error: 'Method not allowed' }, 405);
       }
       return handleFeedback(request, env);
-    }
-    if (url.pathname === '/api/team-state') {
-      return handleTeamState(request, env);
-    }
-    if (url.pathname === '/api/app-state') {
-      return handleAppState(request, env);
     }
     return env.ASSETS.fetch(request);
   },
@@ -112,71 +99,6 @@ async function handleFeedback(request, env) {
   }
 
   return json({ ok: true });
-}
-
-// Shared team blob (D1 equivalent of the Supabase team_state table / the
-// "any authenticated user, single shared row" RLS policy). No per-row
-// scoping needed -- every valid Access identity gets the same row.
-async function handleTeamState(request, env) {
-  let identity;
-  try {
-    identity = await requireAccessIdentity(request, env);
-  } catch (err) {
-    return json({ error: 'Unauthorized', detail: err.message }, 401);
-  }
-
-  const id = 'default';
-  if (request.method === 'GET') {
-    const row = await env.DB.prepare('SELECT data, updated_at, updated_by FROM team_state WHERE id = ?').bind(id).first();
-    return json(row || { data: '{}', updated_at: null, updated_by: null });
-  }
-  if (request.method === 'PUT') {
-    let body;
-    try { body = await request.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
-    const data = typeof body.data === 'string' ? body.data : JSON.stringify(body.data ?? {});
-    const now = new Date().toISOString();
-    await env.DB.prepare(
-      `INSERT INTO team_state (id, data, updated_at, updated_by) VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, updated_by = excluded.updated_by`
-    ).bind(id, data, now, identity.email).run();
-    return json({ ok: true, updated_at: now });
-  }
-  return json({ error: 'Method not allowed' }, 405);
-}
-
-// Per-user blob (D1 equivalent of the Supabase app_state table / the
-// `auth.uid() = user_id` RLS policy). CRITICAL TRUST BOUNDARY: `userId`
-// below is the ONLY identifier ever used to read or write this table, and
-// it comes exclusively from requireAccessIdentity()'s verified JWT claim --
-// never from `body`, never from a query/path param. There is no code path
-// in this function that reads a client-supplied user id, so there is no
-// "forgot the WHERE clause" failure mode to guard against: the value that
-// would need to be forgotten is never accepted as input in the first place.
-async function handleAppState(request, env) {
-  let identity;
-  try {
-    identity = await requireAccessIdentity(request, env);
-  } catch (err) {
-    return json({ error: 'Unauthorized', detail: err.message }, 401);
-  }
-  const userId = identity.email;
-
-  if (request.method === 'GET') {
-    const row = await env.DB.prepare('SELECT data, updated_at FROM app_state WHERE user_id = ?').bind(userId).first();
-    return json(row || { data: '{}', updated_at: null });
-  }
-  if (request.method === 'PUT') {
-    let body;
-    try { body = await request.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
-    const data = typeof body.data === 'string' ? body.data : JSON.stringify(body.data ?? {});
-    const now = new Date().toISOString();
-    await env.DB.prepare(
-      `INSERT INTO app_state (user_id, data, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
-    ).bind(userId, data, now).run();
-    return json({ ok: true, updated_at: now });
-  }
-  return json({ error: 'Method not allowed' }, 405);
 }
 
 function json(data, status = 200) {

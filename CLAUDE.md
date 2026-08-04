@@ -18,20 +18,22 @@ See `docs/ARCHITECTURE.md` for the detailed architecture cheat-sheet, the data-m
 gotchas, and how this project relates to its sibling, AIMO Safety Tracker.
 
 ## Deployment
-Independent Cloudflare/Supabase/Notion resources exist for this project now, separate
-from the sibling's (see `docs/CLOUDFLARE.md`, `docs/SUPABASE.md`, `docs/NOTION.md`).
-The Cloudflare Worker is connected to this GitHub repo, auto-builds on push, and is
-now **live** at https://aimo-projects-tracker.ideandaai.workers.dev. It's currently
-tracking the `claude/review-pending-context-jbjnrg` branch as production, not `main`
-(no `main` branch exists in this repo yet) — revisit once/if that branch is merged.
-See `docs/CLOUDFLARE.md` for exact status and next steps.
+Independent Cloudflare and Notion resources exist for this project, separate from
+the sibling's (see `docs/CLOUDFLARE.md`, `docs/NOTION.md`). **Supabase is shared**
+with the sibling as of 01 Aug 2026 (see `docs/SUPABASE.md` — same real people use
+both apps, so one auth pool made more sense than two independent ones; AIMO
+Tracker's data lives in its own `projects` schema there, not mixed with the
+sibling's `public` tables). The Cloudflare Worker is connected to this GitHub repo,
+auto-builds on push, and is **live** at
+https://aimo-projects-tracker.ideandaai.workers.dev. It's currently tracking the
+`claude/review-pending-context-jbjnrg` branch as production, not `main` (no `main`
+branch exists in this repo yet) — revisit once/if that branch is merged. See
+`docs/CLOUDFLARE.md` for exact status and next steps.
 - **A push to the tracked branch is a deploy** — same "push is a deploy" model as the
   Safety Tracker sibling, just not on `main` yet.
 - "Deploying" a change means: copy `aimo-tracker.html` (the working copy) →
   `public/index.html` (the deploy copy) → commit → push — only on an
   explicit "ship it," per the hard rule below.
-Until the Cloudflare connection is made, treat it as still not live: committing here
-does not put anything in front of users yet.
 
 ## Hard rule: no version changes or deploys without explicit approval
 No new version of the app is built, updated, or deployed unless the owner has

@@ -6,8 +6,9 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P6 | Consolidate Supabase into AIMO-SMS-Tracker (`projects` schema) | ✅ Done — pausing AIMO-Projects-Tracker project |
 | P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | Built (v1.4), not deployed |
-| P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | Built + tested, not deployed to Access |
+| P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | ❌ Abandoned — see P6 |
 | P3 | Reskin refinement pass (accent bars, colored borders, orange nav-active, header button fix) | ✅ Shipped (v1.3) |
 | P2 | Purple design-system reskin (matching Safety Tracker) | ✅ Shipped (v1.2) |
 | P1 | In-app feedback button + Cloudflare/Notion endpoint | ✅ Shipped and fully working (v1.1) |
@@ -21,33 +22,28 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
-- **P4 — D1 + Cloudflare Access trial.** Root cause: Supabase free tier caps at 2
-  active projects; had 3 (AIMO-SMS-Tracker, AIMO-Projects-Tracker, wealth-tracker).
-  Two options drafted (Supabase schema-consolidation into AIMO-SMS-Tracker, or
-  migrate AIMO-Projects-Tracker off Supabase entirely to D1 + Cloudflare Access,
-  trialed here since it's empty/no live users). Owner chose the D1 path. Built:
-  D1 database + schema (`migrations/0001_init.sql`), JWT verification module
-  (`src/access.js`), two new Worker routes (`/api/team-state`, `/api/app-state`).
-  Tested: 6/6 JWT-verification checks (valid/tampered/expired/wrong-audience/
-  unknown-key), plus direct D1-level query isolation between two synthetic users.
-  AIMO-SMS-Tracker (live Safety Tracker data) was not touched.
-  **Paused mid-setup (01 Aug 2026):** in the Cloudflare Zero Trust dashboard, we
-  created an Access policy (`AIMO Tracker API access`, allow-listing
-  `ideandaai@gmail.com`) scoped to two path-based destinations
-  (`aimo-projects-tracker.ideandaai.workers.dev/api/app-state*` and
-  `/api/team-state*`), but the **Application itself didn't save** — the
-  Applications list came back empty after clicking through. Team domain is known
-  (`quiet-unit-b4b4.cloudflareaccess.com`); the AUD tag is not yet captured since
-  the app was never actually created. **Next time:** redo the application
-  creation (Create new application → Self-hosted → Workers tab → re-add the two
-  path destinations → this time use "Add existing policy" to reuse the
-  already-saved `AIMO Tracker API access` policy instead of recreating it →
-  confirm it actually lands on the app's detail page after saving, then grab the
-  AUD tag from its Overview tab → set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`
-  as Worker vars (top-level Settings panel, not the one under Build). See
-  `docs/D1-TRIAL.md` for the full remaining checklist.
+_(none currently in progress)_
 
 ## ✅ Shipped
+- **P6 — Consolidated Supabase into AIMO-SMS-Tracker** (01 Aug 2026). After P4 (D1
+  trial) hit a real blocker — Cloudflare Access can't path-scope protection on a
+  bare `workers.dev` domain, only whole-Worker — and given the same real people use
+  both AIMO Tracker and Safety Tracker anyway, went back to the original
+  consolidation option instead. Created schema `projects` in `AIMO-SMS-Tracker`
+  (ref `kvbmgyupyzegtgbnqktk`) with a `team_state` table matching the standalone
+  project's shape + RLS policy; verified `public.app_state`/`public.team_state`
+  (the Safety Tracker's own tables, live data) untouched — row counts confirmed
+  unchanged before/after. Removed all D1-trial code from the repo (`src/access.js`,
+  `migrations/`, `scripts/test-access-jwt.mjs`, the two Worker routes, the D1
+  binding) and deleted the (empty) trial D1 database. Paused the now-unused
+  standalone `AIMO-Projects-Tracker` Supabase project (reversible, not deleted) —
+  this frees a real project slot; `wealth-tracker` could be unpaused separately if
+  wanted. See `docs/SUPABASE.md` for full detail and the one remaining manual step
+  (exposing the `projects` schema in API settings — dashboard-only, needed before
+  any future client code can query it). `docs/D1-TRIAL.md` kept, marked abandoned,
+  for the Access/workers.dev gotcha it surfaced.
+- **P4 — D1 + Cloudflare Access trial.** ❌ Abandoned in favor of P6 — see above and
+  `docs/D1-TRIAL.md`.
 - **P5 — First real user feedback, addressed** (v1.4, 01 Aug 2026). Source: two
   submissions via the in-app feedback button (Notion Feedback Inbox). (1) Project
   cards: removed crosshair corner brackets, replaced with a frosted-glass card

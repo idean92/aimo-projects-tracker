@@ -1,12 +1,34 @@
-# D1 migration trial — AIMO-Projects-Tracker
+# D1 migration trial — AIMO-Projects-Tracker (ABANDONED, superseded)
 
-**Status: infrastructure built and tested, not yet connected to the live app or to
-a real Cloudflare Access deployment.** This is a trial of Option B (migrate off
-Supabase to Cloudflare D1 + Cloudflare Access) run against `AIMO-Projects-Tracker`
-specifically *because* it has 0 rows and 0 auth users — nothing live to risk. The
-Safety Tracker's real Supabase project (`AIMO-SMS-Tracker`, live user data) is
-untouched; this trial is what would get evaluated before ever considering that
-migration for real.
+**This path was not taken.** Kept for the record — mainly for the real gotcha it
+surfaced (Cloudflare Access can't path-scope protection on a bare `workers.dev`
+domain, only whole-Worker) in case D1/Access comes up again for a project with a
+custom domain. All the code described below (D1 database, `src/access.js`, the
+`/api/team-state`/`/api/app-state` routes, `migrations/`, `scripts/test-access-jwt.mjs`)
+has been **removed from the repo** and the trial D1 database deleted (it was
+always empty, zero data loss). What actually happened instead: **consolidated
+into the Safety Tracker's Supabase project** — see `docs/SUPABASE.md`.
+
+**Why abandoned:** after building this out and getting partway through the
+Cloudflare Access dashboard setup, hit a real blocker — Access's path-scoped
+"Public hostname" destinations only work for hostnames that are an actual zone in
+your Cloudflare account, not a `*.workers.dev` subdomain. The only way to gate just
+`/api/*` (not the whole app) would've meant getting a custom domain first. Given the
+same real people use both AIMO Tracker and Safety Tracker anyway, sharing one
+Supabase auth pool (the original Option A) turned out to make more practical sense
+than clearing that extra hurdle.
+
+---
+
+*(Original trial write-up follows, unmodified, for context.)*
+
+**Status at the time: infrastructure built and tested, not yet connected to the live
+app or to a real Cloudflare Access deployment.** This is a trial of Option B
+(migrate off Supabase to Cloudflare D1 + Cloudflare Access) run against
+`AIMO-Projects-Tracker` specifically *because* it has 0 rows and 0 auth users —
+nothing live to risk. The Safety Tracker's real Supabase project (`AIMO-SMS-Tracker`,
+live user data) is untouched; this trial is what would get evaluated before ever
+considering that migration for real.
 
 ## Why D1 instead of the Supabase consolidation (Option A)
 
