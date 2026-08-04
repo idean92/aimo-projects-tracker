@@ -71,22 +71,45 @@ Same category of manual step as the Worker Git-integration connection and the
 `workers.dev` subdomain toggle earlier in this project — the connected Cloudflare
 MCP tools have no Access/Zero Trust API surface.
 
-1. **Create a Cloudflare Access Application** (Zero Trust dashboard → Access →
-   Applications) protecting this Worker (or at least `/api/app-state` and
-   `/api/team-state`). Add your team members as allowed users (free tier: ≤50).
-2. Note the **team domain** (e.g. `<your-team>.cloudflareaccess.com`) and the
-   Application's **Audience (AUD) tag**.
-3. Set two Worker vars (Settings → Variables and secrets — the **top-level** one,
-   not the one nested under Build; see the note in `docs/CLOUDFLARE.md` about that
-   exact gotcha from the Notion feedback endpoint):
-   - `CF_ACCESS_TEAM_DOMAIN` = your team domain
+**Paused mid-setup as of 01 Aug 2026** — picking this back up:
+
+- ✅ Team domain known: `quiet-unit-b4b4.cloudflareaccess.com`.
+- ✅ Access policy created and saved: `AIMO Tracker API access` (allow
+  `ideandaai@gmail.com`).
+- ✅ Destinations decided: path-scoped public hostnames, **not** a whole-Worker
+  scope (whole-Worker would have required login for the entire app, including
+  the public homepage and `/api/feedback` — wrong). Use:
+  `aimo-projects-tracker.ideandaai.workers.dev/api/app-state*` and
+  `.../api/team-state*`.
+- ❌ The **Application itself failed to save** — after configuring destinations
+  + policy and clicking through, the Applications list came back empty. Cause
+  unconfirmed (possibly navigated away before the final save action completed).
+- ❌ AUD tag not yet captured (app was never actually created).
+
+**To finish:**
+1. Zero Trust → Access → Applications → **Create new application** → Self-hosted
+   → **Workers** tab → Continue.
+2. Re-add the two path-scoped public hostname destinations above; delete the
+   empty "Workers" scope block if it appears.
+3. Under Access policies, use **"Add existing policy"** and select
+   `AIMO Tracker API access` (already saved — don't recreate it).
+4. Scroll to the bottom and confirm you land on the new application's **detail
+   page** after saving (not back on an empty applications list — that's the
+   failure mode that happened last time).
+5. On the application's Overview tab, copy the **Application Audience (AUD)
+   Tag**.
+6. Set two Worker vars (Settings → Variables and secrets — the **top-level**
+   one, not the one nested under Build; see the note in `docs/CLOUDFLARE.md`
+   about that exact gotcha from the Notion feedback endpoint):
+   - `CF_ACCESS_TEAM_DOMAIN` = `quiet-unit-b4b4.cloudflareaccess.com`
    - `CF_ACCESS_AUD` = the Application's AUD tag
-4. Test by logging into `/api/app-state` through the Access-protected URL as two
+7. Test by logging into `/api/app-state` through the Access-protected URL as two
    different team members and confirming each only ever sees their own data —
    the real-world version of the isolation test above.
 
-Until that's done, both routes return `401` with `"Cloudflare Access is not
-configured"` — safe, inert, no data exposure risk either way.
+Until that's done, both routes return `401` (currently
+`"Missing Cf-Access-Jwt-Assertion header"`, confirmed live) — safe, inert, no
+data exposure risk either way.
 
 ## Not wired into the app yet
 

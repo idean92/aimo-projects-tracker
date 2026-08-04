@@ -29,10 +29,22 @@ _(none yet)_
   (`src/access.js`), two new Worker routes (`/api/team-state`, `/api/app-state`).
   Tested: 6/6 JWT-verification checks (valid/tampered/expired/wrong-audience/
   unknown-key), plus direct D1-level query isolation between two synthetic users.
-  Not yet deployed to a real Cloudflare Access application (dashboard-only step,
-  no API path) and not wired into the app's UI — see `docs/D1-TRIAL.md` for full
-  status and the exact remaining manual steps. AIMO-SMS-Tracker (live Safety
-  Tracker data) was not touched.
+  AIMO-SMS-Tracker (live Safety Tracker data) was not touched.
+  **Paused mid-setup (01 Aug 2026):** in the Cloudflare Zero Trust dashboard, we
+  created an Access policy (`AIMO Tracker API access`, allow-listing
+  `ideandaai@gmail.com`) scoped to two path-based destinations
+  (`aimo-projects-tracker.ideandaai.workers.dev/api/app-state*` and
+  `/api/team-state*`), but the **Application itself didn't save** — the
+  Applications list came back empty after clicking through. Team domain is known
+  (`quiet-unit-b4b4.cloudflareaccess.com`); the AUD tag is not yet captured since
+  the app was never actually created. **Next time:** redo the application
+  creation (Create new application → Self-hosted → Workers tab → re-add the two
+  path destinations → this time use "Add existing policy" to reuse the
+  already-saved `AIMO Tracker API access` policy instead of recreating it →
+  confirm it actually lands on the app's detail page after saving, then grab the
+  AUD tag from its Overview tab → set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`
+  as Worker vars (top-level Settings panel, not the one under Build). See
+  `docs/D1-TRIAL.md` for the full remaining checklist.
 
 ## ✅ Shipped
 - **P3 — Reskin refinement pass** (v1.3, 01 Aug 2026, built directly from owner
