@@ -6,6 +6,11 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🆕 Logged — awaiting go |
+| P12 | Audit batch 4 — schema + governance (H3, M8, M9) | 🆕 Logged — awaiting go |
+| P11 | Audit batch 3 — KPI correctness (H4, M5, M6, M7, L6, L7, L9, L10) | 🆕 Logged — awaiting go |
+| P10 | Audit batch 2 — quick correctness wins (L1, M3, L8, M10, M11) | 🆕 Logged — awaiting go |
+| P9 | Audit batch 1 — data-loss protection (C1, C2, H1, H2, M2) | 🆕 Logged — awaiting go |
 | P7 | Cloud sync (Supabase auth + team_state sync) — v2.0 big build | 🔧 Built + QA'd on working copy — awaiting review + explicit "ship it" |
 | P6 | Consolidate Supabase into AIMO-SMS-Tracker (`projects` schema) | ✅ Done — pausing AIMO-Projects-Tracker project |
 | P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | ✅ Shipped (v1.4) |
@@ -23,6 +28,54 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
+- **P9 through P13 — Independent code audit findings** (Notion: "Code Audits — AIMO
+  Projects Tracker", Audit Run 1, 04 Aug 2026, against v1.4 / commit `0d9795c` —
+  predates P7's cloud-sync work, no overlap). 31 findings: 2 Critical, 4 High, 12
+  Medium, 13 Low. Full finding detail, exact line numbers, and fix instructions
+  live in the Notion page; batched here exactly as the audit itself suggests, so
+  each batch is one go/no-go decision. Nothing implemented yet — logged per
+  `CLAUDE.md`'s process, awaiting explicit go per batch.
+  - **P9 — Batch 1, data-loss protection (Critical).** C1: malformed session
+    import can brick the app on next load (crash outside any try/catch). C2:
+    import overwrites all current data with no confirmation and no backup. H1:
+    corrupted localStorage gets silently replaced by demo data on next load
+    instead of preserved. H2: import reports success even when a storage write
+    actually failed (quota). M2: session export can miss the last debounced
+    edit, then clears the "needs backup" flag anyway. Audit's own recommended
+    review-before-ship, since this is exactly the session import/export path
+    `CLAUDE.md` already flags as data-loss-sensitive.
+  - **P10 — Batch 2, quick correctness wins.** L1: one real stored-XSS gap — a
+    hand-edited/malicious session import can plant an unescaped `innerHTML`
+    payload in the governance detail panel. M3: governance action age renders
+    "NaNd" when Date Opened is empty. L8: invalid CSS silently drops a KPI
+    sub-line's RAG color. M10/M11: stale hardcoded version badge in the
+    markup and stale version references in `CLAUDE.md`/`docs/ARCHITECTURE.md`.
+    Low risk, one-line-scale fixes.
+  - **P11 — Batch 3, KPI correctness.** H4: KREI total treats unmeasured
+    components as 0 instead of excluding them, causing false-red scores. M5:
+    reversed event dates count as 0-day turnarounds. M6/L12: timezone bugs in
+    working-day/date-math helpers (correct in KSA, wrong for other-timezone
+    viewers). M7: two KPI cards compute "comment closure" from different
+    sources and can disagree on identical data. L6/L7/L9/L10: assorted
+    threshold/footnote/ordering drift in KPI displays. Touches KPI scoring —
+    per `CLAUDE.md` this batch warrants a review subagent before shipping.
+  - **P12 — Batch 4, schema + governance.** H3: phase-planned-dates entered via
+    the Add/Edit modal write to a flat schema location nothing else reads,
+    creating two disconnected sources of truth (needs a migration for existing
+    data). M8: breach-flag logic disagrees between the project Overview panel
+    and the Governance view. M9: editing an action via the modal bypasses
+    target-date audit-trail history that the inline editor records.
+  - **P13 — Batch 5, hardening & hygiene.** M1: cross-tab save race between the
+    main app and the `?verify=` popup can silently drop or overwrite edits.
+    M4: a couple of handlers write the full projects array (incl. base64
+    photos) to localStorage on every keystroke instead of debouncing. M12: the
+    known loose end that production deploys from this working branch, no
+    `main` yet (needs owner approval per the hard rule — already tracked
+    elsewhere too). L2/L3: `/api/feedback` has no auth/rate-limiting and
+    parses the body before size validation. L4: timestamp-only IDs (no random
+    suffix) can collide. L5/L11/L13: quota-alert-only-fires-once, inconsistent
+    overdue-date semantics across views, ~510 lines of dead `buildSafety*`
+    code kept since the v1.4 Safety-tab redirect.
 - **P7 — Cloud sync (Supabase)**, the "big build" requested to bring
   AIMO Tracker's header/sync UX in line with the Safety Tracker sibling. Email +
   password sign-in, whole-blob sync (`projects`/`governance`/`kpiSettings`) to the
