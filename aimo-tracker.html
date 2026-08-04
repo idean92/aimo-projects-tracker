@@ -2309,25 +2309,6 @@ function migrateProject(p) {
   // Ensure aipsDates exists
   if (!p.aipsDates) p.aipsDates = { aipsSubmission:{planned:null,baseline:null,actual:null}, infoCutoff:{planned:null,baseline:null,actual:null}, publication:{planned:null,baseline:null,actual:null}, airacEffective:{planned:null,baseline:null,actual:null} };
   else { Object.values(p.aipsDates).forEach(d=>{ if(d.actual===undefined) d.actual=null; }); }
-  // H3: pre-fix versions of saveProject wrote planned schedule dates to a flat location
-  // (stageDocs.<key>.phases.plannedStart/plannedEnd, treating `phases` as a single object)
-  // that nothing else ever read — the real, canonical location every reader uses is
-  // stageDocs.project_execution.phases[key].plannedStart/plannedEnd. Recover any such stray
-  // values once, so dates entered before the fix reappear instead of staying invisible.
-  ['project_execution', 'orat', 'project_completion'].forEach(key => {
-    const stalePhases = p.stageDocs?.[key]?.phases;
-    if (!stalePhases) return;
-    const staleStart = typeof stalePhases.plannedStart === 'string' ? stalePhases.plannedStart : null;
-    const staleEnd = typeof stalePhases.plannedEnd === 'string' ? stalePhases.plannedEnd : null;
-    if (staleStart === null && staleEnd === null) return;
-    delete stalePhases.plannedStart;
-    delete stalePhases.plannedEnd;
-    const sd = ensureStageDocs(p, 'project_execution');
-    if (!sd.phases) sd.phases = {};
-    if (!sd.phases[key]) sd.phases[key] = {};
-    if (staleStart && !sd.phases[key].plannedStart) sd.phases[key].plannedStart = staleStart;
-    if (staleEnd && !sd.phases[key].plannedEnd) sd.phases[key].plannedEnd = staleEnd;
-  });
   // Migrate submission log rounds: add new fields if missing
   if (p.stageDocs) {
     Object.values(p.stageDocs).forEach(sd=>{
@@ -2380,6 +2361,29 @@ function migrateProject(p) {
     const blank = () => ({ plannedStart:null, plannedEnd:null, plannedDuration:null, actualStart:null, actualEnd:null, actualDuration:null });
     p.stageDocs.project_execution.phases = { project_execution:blank(), orat:blank(), project_completion:blank() };
   }
+  // H3: pre-fix versions of saveProject wrote planned schedule dates to a flat location
+  // (stageDocs.<key>.phases.plannedStart/plannedEnd, treating `phases` as a single object)
+  // that nothing else ever read — the real, canonical location every reader uses is
+  // stageDocs.project_execution.phases[key].plannedStart/plannedEnd. Recover any such stray
+  // values once, so dates entered before the fix reappear instead of staying invisible.
+  // Must run AFTER the phases-object seeding above: that block only fills in `phases` when
+  // it's entirely absent, so if this ran first and created a partial `phases` (only the
+  // migrated key, missing the other two and their plannedDuration/actual* fields), the real
+  // seeding would see a truthy object and skip, leaving `phases` under-populated.
+  ['project_execution', 'orat', 'project_completion'].forEach(key => {
+    const stalePhases = p.stageDocs?.[key]?.phases;
+    if (!stalePhases) return;
+    const staleStart = typeof stalePhases.plannedStart === 'string' ? stalePhases.plannedStart : null;
+    const staleEnd = typeof stalePhases.plannedEnd === 'string' ? stalePhases.plannedEnd : null;
+    if (staleStart === null && staleEnd === null) return;
+    delete stalePhases.plannedStart;
+    delete stalePhases.plannedEnd;
+    const sd = ensureStageDocs(p, 'project_execution');
+    if (!sd.phases) sd.phases = {};
+    if (!sd.phases[key]) sd.phases[key] = {};
+    if (staleStart && !sd.phases[key].plannedStart) sd.phases[key].plannedStart = staleStart;
+    if (staleEnd && !sd.phases[key].plannedEnd) sd.phases[key].plannedEnd = staleEnd;
+  });
   // Clear any previously-migrated trialsDuration value from phases.orat.plannedDuration
   if (p.stageDocs?.project_execution?.phases?.orat && p.trialsDuration != null &&
       p.stageDocs.project_execution.phases.orat.plannedDuration === p.trialsDuration) {
@@ -2599,6 +2603,27 @@ function sbSchedulePush() {
   sbPushTimer = setTimeout(sbPushNow, 800);
 }
 
+// Snapshot of STORAGE_KEY's content as of the last time this window confirmed local and cloud
+// data matched (right after a successful push or a successful pull-apply). Used by
+// sbNoteExternalStorageChange() below to tell a genuine external edit (the ?verify= pop-out,
+// or another tab of this same app) apart from this window's own pull having just written that
+// same content — the native `storage` event never fires in the tab that made the write, but it
+// DOES fire in every other open tab, including one that a moment ago pulled that exact content
+// itself, so without this check a pull in tab A would make tab B immediately re-push identical
+// data back (wasted round-trip, and a spurious CAS-token bump that can trip a third tab/device
+// into a content-identical "someone else's changes were loaded" alert for nothing).
+let _sbLastSyncedSnapshot = null;
+
+// Called by the boot sequence's aimoRefresh/BroadcastChannel/storage-poll handlers — the paths
+// that pick up writes made by the ?verify= pop-out (or another tab of the main app) via the
+// native `storage` event, BroadcastChannel, or the `_aimo_sync` heartbeat. Those handlers only
+// reload local state (loadProjects()); this is what actually gets that change to the cloud.
+function sbNoteExternalStorageChange() {
+  if (!sbClient || !sbUser) return;
+  const current = JSON.stringify(lsGet(STORAGE_KEY, []));
+  if (current !== _sbLastSyncedSnapshot) sbSchedulePush();
+}
+
 // Builds the sync payload from localStorage rather than the in-memory state/govState/
 // kpiSettings globals. This matters specifically for the `?verify=` pop-out window: its own
 // `state.projects` is set once at boot and never refreshed (its edits go straight through
@@ -2648,7 +2673,7 @@ async function sbPushNow() {
         throw error;
       }
       sbLastPulledAt = data.updated_at;
-      if (sbEditGen === myGen) sbDirty = false;
+      if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     } else {
       // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
@@ -2676,7 +2701,7 @@ async function sbPushNow() {
         return;
       }
       sbLastPulledAt = data.updated_at;
-      if (sbEditGen === myGen) sbDirty = false;
+      if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     }
   } catch (err) {
@@ -2704,14 +2729,19 @@ async function sbPullNow(force) {
     sbPulled = true; // mark true right after the fetch itself succeeds — a throw below (malformed
                       // remote blob) must not permanently block all future pushes
     if (data) {
-      // If there's an unsynced local edit, only skip applying remote data when nothing has
-      // actually changed on the server since our last known baseline (safe — the pending push
-      // will land cleanly). If the server DID change since then, this is a real conflict:
-      // silently "adopting" that newer token without applying its data would let the pending
-      // push's CAS succeed and overwrite a teammate's change we never even looked at. So treat
-      // it like the explicit conflict-resolution path instead — force remote in and alert.
-      const noServerChange = sbDirty && data.updated_at === sbLastPulledAt;
-      const skipApply = sbDirty && !force && noServerChange;
+      // Skip applying (and skip taking a recovery backup) whenever nothing has actually
+      // changed on the server since our last known baseline — regardless of dirty state. This
+      // matters for two reasons: (1) if dirty, the pending push will land cleanly against this
+      // same token, no need to touch local data at all; (2) if not dirty, this is almost always
+      // what a routine refocus-triggered pull finds (nobody changed anything), and re-applying
+      // identical data would pointlessly overwrite the aimo_pre_pull_backup recovery key with
+      // itself on every tab focus — destroying the one thing that backup exists to preserve.
+      // If the server DID change, this is a real conflict when we're dirty: silently "adopting"
+      // that newer token without applying its data would let the pending push's CAS succeed and
+      // overwrite a teammate's change we never even looked at. So treat it like the explicit
+      // conflict-resolution path instead — force remote in and alert.
+      const noServerChange = data.updated_at === sbLastPulledAt;
+      const skipApply = !force && noServerChange;
       const wasRealConflict = sbDirty && !force && !skipApply;
       if (!skipApply) {
         // Snapshot whatever's about to be overwritten before applying remote data. This is
@@ -2734,6 +2764,7 @@ async function sbPullNow(force) {
         }
         sbLastPulledAt = data.updated_at;
         sbDirty = false;
+        _sbLastSyncedSnapshot = JSON.stringify(data.data?.projects || []);
         loadProjects();
         loadGovernance();
         loadKPISettings();
@@ -5636,8 +5667,13 @@ function saveProject() {
       const sd = ensureStageDocs(proj, 'project_execution');
       if (!sd.phases) sd.phases = {};
       if (!sd.phases[key]) sd.phases[key] = {};
-      if (startVal !== null) sd.phases[key].plannedStart = startVal;
-      if (endVal   !== null) sd.phases[key].plannedEnd   = endVal;
+      // Write unconditionally, including null for an emptied field — matches savePhaseField's
+      // own semantics (`ph[field] = val || null`). Guarding on `!== null` would silently keep
+      // a stale value when the user clears the field and saves, since this now reads back from
+      // the same canonical location every other view uses (previously invisible because nothing
+      // read this location at all — see CHANGELOG H3).
+      sd.phases[key].plannedStart = startVal;
+      sd.phases[key].plannedEnd   = endVal;
     }
   });
   saveProjects(); closeAddModal(true);
@@ -11344,6 +11380,7 @@ if (_vpParams.get('verify')) {
     loadProjects();
     if (state.selectedId) renderProjectDetail();
     renderSidebar();
+    sbNoteExternalStorageChange(); // the ?verify= pop-out has no cloud sync of its own (see initCloudSync) — this is what actually gets its edits to the cloud
   };
   try {
     const _mainBC = new BroadcastChannel('aimo_tracker');
@@ -11352,6 +11389,7 @@ if (_vpParams.get('verify')) {
       loadProjects();
       if (state.selectedId === e.data.projectId) renderProjectDetail();
       renderSidebar();
+      sbNoteExternalStorageChange();
     });
   } catch(e) {}
   // Storage event (works in some browsers cross-tab even on file://)
@@ -11360,6 +11398,7 @@ if (_vpParams.get('verify')) {
     loadProjects();
     if (state.selectedId) renderProjectDetail();
     renderSidebar();
+    sbNoteExternalStorageChange();
   });
   // Polling fallback — picks up verify-page saves when storage events don't fire on file://
   let _lastSyncVal = localStorage.getItem('_aimo_sync');
@@ -11370,6 +11409,7 @@ if (_vpParams.get('verify')) {
       loadProjects();
       if (state.selectedId) renderProjectDetail();
       renderSidebar();
+      sbNoteExternalStorageChange();
     }
   }, 1500);
 }
@@ -13877,15 +13917,24 @@ async function loadSessionFile(input) {
   // wrong file is still recoverable from localStorage even without a manual export.
   lsSet('aimo_pre_import_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) });
   // H2: track whether every write actually succeeded (lsSet returns false on a quota failure)
-  // instead of assuming success and reporting "Loaded" regardless.
+  // instead of assuming success and reporting "Loaded" regardless. Writes are wrapped with
+  // _sbApplyingRemote so a partial/failed import can't get a half-imported blob pushed to the
+  // cloud before the failure is even detected — lsSet's push hook fires on every successful
+  // write as it happens, sequentially, which would otherwise beat this all-or-nothing check.
   const results = [];
-  if (data.projects)    results.push(lsSet(STORAGE_KEY,      data.projects));
-  if (data.governance)  results.push(lsSet(GOVERNANCE_KEY,   data.governance));
-  if (data.kpiSettings) results.push(lsSet(KPI_SETTINGS_KEY, data.kpiSettings));
+  _sbApplyingRemote = true;
+  try {
+    if (data.projects)    results.push(lsSet(STORAGE_KEY,      data.projects));
+    if (data.governance)  results.push(lsSet(GOVERNANCE_KEY,   data.governance));
+    if (data.kpiSettings) results.push(lsSet(KPI_SETTINGS_KEY, data.kpiSettings));
+  } finally {
+    _sbApplyingRemote = false;
+  }
   if (results.includes(false)) {
     showErr('✗ Import only partially saved — your browser storage is full. Free up space (remove old projects, or use a fresh browser profile) and try again. Nothing was lost — your previous session is still in the "aimo_pre_import_backup" recovery key until you reload.');
     return;
   }
+  sbSchedulePush(); // no-op if cloud sync isn't active/signed in — see sbSchedulePush's own guard
   // Reload state
   loadProjects(); loadGovernance(); loadKPISettings();
   state.projects.forEach(p => { if (p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
