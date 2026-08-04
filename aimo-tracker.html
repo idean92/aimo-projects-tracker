@@ -2273,9 +2273,27 @@ let cardMapInstances = {};
 /* ══════════════════════════════════════════════════
    PERSISTENCE & MIGRATION
 ══════════════════════════════════════════════════ */
+// H1: set when a stored aimo_projects value fails to parse (or isn't the array shape it
+// should be) — the boot sequence checks this so it never seeds/overwrites what might be
+// salvageable-but-corrupted data (e.g. from a write cut short by a quota hit or browser
+// crash) with fresh demo data.
+let _storageCorrupt = false;
 function loadProjects() {
-  try { state.projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-  catch(e) { state.projects = []; }
+  const raw = localStorage.getItem(STORAGE_KEY);
+  try {
+    const v = JSON.parse(raw);
+    state.projects = Array.isArray(v) ? v : [];
+    if (raw !== null && !Array.isArray(v)) {
+      lsSet(STORAGE_KEY + '_corrupt_backup', raw);
+      _storageCorrupt = true;
+    }
+  } catch (e) {
+    state.projects = [];
+    if (raw) {
+      lsSet(STORAGE_KEY + '_corrupt_backup', raw);
+      _storageCorrupt = true;
+    }
+  }
   state.projects.forEach(migrateProject);
 }
 // Stages whose presets were cleared — wipe stale docList if no user data entered
@@ -2291,6 +2309,25 @@ function migrateProject(p) {
   // Ensure aipsDates exists
   if (!p.aipsDates) p.aipsDates = { aipsSubmission:{planned:null,baseline:null,actual:null}, infoCutoff:{planned:null,baseline:null,actual:null}, publication:{planned:null,baseline:null,actual:null}, airacEffective:{planned:null,baseline:null,actual:null} };
   else { Object.values(p.aipsDates).forEach(d=>{ if(d.actual===undefined) d.actual=null; }); }
+  // H3: pre-fix versions of saveProject wrote planned schedule dates to a flat location
+  // (stageDocs.<key>.phases.plannedStart/plannedEnd, treating `phases` as a single object)
+  // that nothing else ever read — the real, canonical location every reader uses is
+  // stageDocs.project_execution.phases[key].plannedStart/plannedEnd. Recover any such stray
+  // values once, so dates entered before the fix reappear instead of staying invisible.
+  ['project_execution', 'orat', 'project_completion'].forEach(key => {
+    const stalePhases = p.stageDocs?.[key]?.phases;
+    if (!stalePhases) return;
+    const staleStart = typeof stalePhases.plannedStart === 'string' ? stalePhases.plannedStart : null;
+    const staleEnd = typeof stalePhases.plannedEnd === 'string' ? stalePhases.plannedEnd : null;
+    if (staleStart === null && staleEnd === null) return;
+    delete stalePhases.plannedStart;
+    delete stalePhases.plannedEnd;
+    const sd = ensureStageDocs(p, 'project_execution');
+    if (!sd.phases) sd.phases = {};
+    if (!sd.phases[key]) sd.phases[key] = {};
+    if (staleStart && !sd.phases[key].plannedStart) sd.phases[key].plannedStart = staleStart;
+    if (staleEnd && !sd.phases[key].plannedEnd) sd.phases[key].plannedEnd = staleEnd;
+  });
   // Migrate submission log rounds: add new fields if missing
   if (p.stageDocs) {
     Object.values(p.stageDocs).forEach(sd=>{
@@ -2440,6 +2477,7 @@ let sbSyncing = false;
 let sbPulled = false; // true once a pull has completed at least once this session — pushes are held until then, so a slow/failed initial pull can never upsert-overwrite a teammate's row with stale local data
 let sbDirty = false; // true while a local edit hasn't been confirmed synced — refocus must not pull-and-clobber while this is set
 let sbEditGen = 0; // bumped on every sbSchedulePush() — lets an in-flight push detect a newer edit landed after it snapshotted state, so it doesn't clear sbDirty out from under that newer edit
+let sbSessionGen = 0; // bumped on sign-out — lets an in-flight push/pull detect the session it belongs to has ended (or a new one started) and skip writing its stale result over live state
 let sbNeedsRetryPush = false; // a push arrived while one was already in flight; debounce already cleared, so this flag is the only record of it
 let sbPushTimer = null;
 let sbSyncStatus = 'signed-out'; // signed-out | syncing | synced | conflict | error
@@ -2516,11 +2554,14 @@ async function cloudSignIn() {
   }
 }
 
-async function cloudSignOut() {
-  if (!sbClient) return;
-  try { await sbClient.auth.signOut(); } catch (e) {}
+// Resets every piece of per-session sync state. Called both from cloudSignOut() (the user
+// clicked Sign Out in this window) AND from the SIGNED_OUT branch of onAuthStateChange (this
+// window merely learned the shared, localStorage-persisted Supabase session ended — e.g.
+// signed out from another tab). Without the latter, a second tab could keep an in-flight
+// push/pull believing a session that no longer exists is still live (exactly what sbSessionGen
+// exists to prevent), or push under a stale token once a new sign-in happens in that tab.
+function sbResetSessionState() {
   clearTimeout(sbPushTimer);
-  sbUser = null;
   sbLastPulledAt = null;
   // Reset every piece of per-session sync state — otherwise a stale sbPulled=true from the
   // previous session would let a post-sign-in push race ahead of the new pull (with
@@ -2529,6 +2570,23 @@ async function cloudSignOut() {
   sbPulled = false;
   sbDirty = false;
   sbNeedsRetryPush = false;
+  // Bump the session generation so a push/pull already in flight from before this reset (its
+  // network request can't be cancelled) recognizes on completion that it no longer belongs to
+  // the live session and skips writing its now-stale result over fresh state — this is what
+  // actually makes the resets above durable against that race.
+  sbSessionGen++;
+}
+
+async function cloudSignOut() {
+  if (!sbClient) return;
+  try { await sbClient.auth.signOut(); } catch (e) {}
+  // Don't rely on onAuthStateChange's SIGNED_OUT branch (which also calls this) having
+  // already fired synchronously in this window by this point — call it explicitly too.
+  // sbResetSessionState() is idempotent (a redundant call just bumps sbSessionGen again,
+  // which is harmless), so calling it from both places is strictly safer than assuming one
+  // subsumes the other.
+  sbUser = null;
+  sbResetSessionState();
   setSyncStatus('signed-out');
   closeCloudAuthModal();
 }
@@ -2541,6 +2599,21 @@ function sbSchedulePush() {
   sbPushTimer = setTimeout(sbPushNow, 800);
 }
 
+// Builds the sync payload from localStorage rather than the in-memory state/govState/
+// kpiSettings globals. This matters specifically for the `?verify=` pop-out window: its own
+// `state.projects` is set once at boot and never refreshed (its edits go straight through
+// lsGet/lsSet, same as vpSaveNow/renderVerifyPageContent already do), so pushing the in-memory
+// global there would silently send stale, pre-edit data under a perfectly valid CAS token —
+// the edit would never reach the cloud and never surface as a conflict. Sourcing from
+// localStorage (the actual thing lsSet/sbSchedulePush react to) is correct in both windows.
+function sbBuildPayload() {
+  return {
+    projects: lsGet(STORAGE_KEY, []),
+    governance: lsGet(GOVERNANCE_KEY, { actions: [], persons: [] }),
+    kpiSettings: lsGet(KPI_SETTINGS_KEY, {}),
+  };
+}
+
 async function sbPushNow() {
   if (!sbClient || !sbUser) return;
   if (!sbPulled) return; // initial pull hasn't resolved yet — stay dirty, sbPullNow() flushes this once it lands
@@ -2549,16 +2622,31 @@ async function sbPushNow() {
   sbSyncing = true;
   setSyncStatus('syncing');
   const myGen = sbEditGen; // snapshot — if a newer edit lands before this push resolves, don't let this push's success wipe sbDirty out from under it
-  const payload = { projects: state.projects, governance: govState, kpiSettings: kpiSettings };
+  const mySessionGen = sbSessionGen; // snapshot — if sign-out happens mid-flight, this push's result belongs to a session that no longer exists
+  const payload = sbBuildPayload();
   try {
     if (!sbLastPulledAt) {
-      // First-ever push for this team (sbPulled is true and the prior pull found no row) —
-      // upsert since the row doesn't exist yet.
+      // First-ever push for this team (sbPulled is true and the prior pull found no row) — a
+      // plain insert, not upsert: upsert would let two clients that both saw "no row" blind-
+      // overwrite each other with no conflict signal. A unique-violation here means someone
+      // else's insert won the race — treat it exactly like a CAS failure below.
       const { data, error } = await sbTable()
-        .upsert({ id: 'default', data: payload, updated_by: sbUser.id }, { onConflict: 'id' })
+        .insert({ id: 'default', data: payload, updated_by: sbUser.id })
         .select('updated_at')
         .single();
-      if (error) throw error;
+      if (sbSessionGen !== mySessionGen) return; // session ended/changed while this was in flight
+      if (error) {
+        if (error.code === '23505') {
+          const pulled = await sbPullNow(true);
+          if (sbSessionGen !== mySessionGen) return; // session ended/changed during the recovery pull too
+          if (pulled) {
+            setSyncStatus('conflict');
+            alert('Someone else\'s changes were just loaded from the cloud — your edit may not have been saved. If it\'s missing, your previous local data is recoverable from the "aimo_pre_pull_backup" browser storage key.');
+          } // else: the recovery pull itself failed — it already set an 'error' status, don't pile a misleading "loaded" alert on top
+          return;
+        }
+        throw error;
+      }
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) sbDirty = false;
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
@@ -2570,6 +2658,7 @@ async function sbPushNow() {
         .eq('updated_at', sbLastPulledAt)
         .select('updated_at')
         .maybeSingle();
+      if (sbSessionGen !== mySessionGen) return; // session ended/changed while this was in flight
       if (error) throw error;
       if (!data) {
         // 0 rows matched — someone else saved first. Pull their version in rather
@@ -2578,9 +2667,12 @@ async function sbPushNow() {
         // path), unlike a passive background pull which defers to a dirty local edit.
         // (sbSyncing stays true through this awaited pull, closing the reentrancy window
         // where a queued retry could push the stale losing token mid-resolution.)
-        await sbPullNow(true);
-        setSyncStatus('conflict');
-        alert('Someone else\'s changes were just loaded from the cloud (your edit may not have been saved) — please check your last change and redo it if it\'s missing.');
+        const pulled = await sbPullNow(true);
+        if (sbSessionGen !== mySessionGen) return; // session ended/changed during the recovery pull too
+        if (pulled) {
+          setSyncStatus('conflict');
+          alert('Someone else\'s changes were just loaded from the cloud — your edit may not have been saved. If it\'s missing, your previous local data is recoverable from the "aimo_pre_pull_backup" browser storage key.');
+        } // else: the recovery pull itself failed — it already set an 'error' status, don't pile a misleading "loaded" alert on top
         return;
       }
       sbLastPulledAt = data.updated_at;
@@ -2588,18 +2680,26 @@ async function sbPushNow() {
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     }
   } catch (err) {
-    setSyncStatus('error', 'Sync error — your local save is safe, but it hasn\'t reached the cloud yet.');
+    if (sbSessionGen === mySessionGen) setSyncStatus('error', 'Sync error — your local save is safe, but it hasn\'t reached the cloud yet.');
   } finally {
     sbSyncing = false;
-    if (sbNeedsRetryPush) { sbNeedsRetryPush = false; sbSchedulePush(); }
+    // Only re-arm if there's genuinely still something unsynced — sbSchedulePush() itself
+    // bumps sbEditGen/sbDirty, which would otherwise force a redundant round-trip (and
+    // invalidate every other window's CAS token) even when this push already covered it.
+    if (sbNeedsRetryPush) { sbNeedsRetryPush = false; if (sbDirty) sbSchedulePush(); }
   }
 }
 
+// Returns true if the pull completed (applied remote data, skipped it safely, or found no
+// row), false if it failed (network/query error — caller should not claim a conflict was
+// resolved), or undefined if it was aborted because the session changed mid-flight.
 async function sbPullNow(force) {
   if (!sbClient || !sbUser) return;
   setSyncStatus('syncing');
+  const mySessionGen = sbSessionGen; // snapshot — if sign-out happens mid-flight, this pull's result belongs to a session that no longer exists
   try {
     const { data, error } = await sbTable().select('data, updated_at').eq('id', 'default').maybeSingle();
+    if (sbSessionGen !== mySessionGen) return; // session ended/changed while this was in flight — don't apply a stale session's data over live state
     if (error) throw error;
     sbPulled = true; // mark true right after the fetch itself succeeds — a throw below (malformed
                       // remote blob) must not permanently block all future pushes
@@ -2614,6 +2714,15 @@ async function sbPullNow(force) {
       const skipApply = sbDirty && !force && noServerChange;
       const wasRealConflict = sbDirty && !force && !skipApply;
       if (!skipApply) {
+        // Snapshot whatever's about to be overwritten before applying remote data. This is
+        // the general safety net for every case where a pull can discard local work it didn't
+        // know was there — not just the flagged conflict case: sbDirty itself only reflects
+        // THIS window's edits since ITS last pull, so e.g. a first pull after a long offline
+        // stretch, or a pull right after sign-in with sbDirty reset, can otherwise overwrite
+        // real local data with no flag ever having caught it. One level of undo, recoverable
+        // from DevTools (localStorage.getItem('aimo_pre_pull_backup')) — same pattern as the
+        // session-import backup (loadSessionFile / aimo_pre_import_backup).
+        lsSet('aimo_pre_pull_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) });
         _sbApplyingRemote = true;
         try {
           const d = data.data || {};
@@ -2635,7 +2744,7 @@ async function sbPullNow(force) {
       }
       if (wasRealConflict) {
         setSyncStatus('conflict');
-        alert('Someone else\'s changes were just loaded from the cloud (your edit may not have been saved) — please check your last change and redo it if it\'s missing.');
+        alert('Someone else\'s changes were just loaded from the cloud — your edit may not have been saved. If it\'s missing, your previous local data is recoverable from the "aimo_pre_pull_backup" browser storage key.');
       } else {
         setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
       }
@@ -2644,11 +2753,15 @@ async function sbPullNow(force) {
       setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
     }
     if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight (or survived a skip-apply above) — flush it now that we have a baseline
+    return true;
   } catch (err) {
-    setSyncStatus('error', 'Couldn\'t reach the cloud — working from local data.');
+    if (sbSessionGen === mySessionGen) {
+      setSyncStatus('error', 'Couldn\'t reach the cloud — working from local data.');
+    }
     // sbPulled stays as-is: false blocks any push until a pull actually succeeds
     // (never blind-overwrite the team's row); true (a prior successful pull) is
     // untouched since sbLastPulledAt is still a valid CAS token.
+    return false;
   }
 }
 
@@ -2659,7 +2772,14 @@ function initCloudSync() {
   if (btn) btn.classList.remove('hidden');
   sbClient.auth.onAuthStateChange((event, session) => {
     sbUser = session ? session.user : null;
-    if (!sbUser) { setSyncStatus('signed-out'); return; }
+    if (!sbUser) {
+      // Covers both this window's own sign-out AND learning that a DIFFERENT window (sharing
+      // the same persisted Supabase session in localStorage) signed out — either way, any
+      // push/pull already in flight belongs to a session that's now dead.
+      sbResetSessionState();
+      setSyncStatus('signed-out');
+      return;
+    }
     // Don't claim 'synced' here — sbPullNow() (called below, or by cloudSignIn) sets the
     // real status once a pull actually completes. This fires on INITIAL_SESSION/TOKEN_REFRESHED
     // too, which would otherwise mask a genuine in-progress/error state with a false "synced".
@@ -3314,8 +3434,13 @@ function kreiScores(p) {
     scoreA = Math.min(40, Math.round((correctlyClosed / totalComments) * 400) / 10);
   }
 
-  const total = (hasComments || hasCycleData || hasResubs)
-    ? Math.round(((scoreA ?? 0) + (scoreB ?? 0) + (scoreC ?? 0)) * 10) / 10
+  // H4: pro-rate over only the components that actually have data, rather than coercing an
+  // unmeasured component to 0 and scoring it against the full 100-point scale — a project
+  // with only e.g. resubmission-timing data and a perfect score there was showing as a false
+  // red (e.g. 40/100) instead of reflecting perfect performance on what's actually measured.
+  const maxPossible = (hasComments ? 40 : 0) + (hasCycleData ? 20 : 0) + (hasResubs ? 40 : 0);
+  const total = maxPossible > 0
+    ? Math.round(((scoreA ?? 0) + (scoreB ?? 0) + (scoreC ?? 0)) / maxPossible * 1000) / 10
     : null;
 
   return { scoreA, scoreB, scoreC, total,
@@ -5434,9 +5559,12 @@ function openAddModal(projectId=null) {
     const d=p?.milestones?.[m.key]||{};
     return `<tr><td>${m.label}</td><td><input type="date" id="mb-${m.key}" value="${d.baseline||''}"/></td><td><input type="date" id="mp-${m.key}" value="${d.planned||''}"/></td><td><input type="date" id="ma-${m.key}" value="${d.actual||''}"/></td></tr>`;
   }).join('');
-  // Populate planned construction schedule dates
+  // Populate planned construction schedule dates. Canonical location for all three phase
+  // keys is stageDocs.project_execution.phases[key] (same nested shape savePhaseField/the
+  // schedule table/executive report all read) — NOT separate per-stage stageDocs entries.
   const pPhases = p?.stageDocs?.project_execution?.phases || {};
-  [['project_execution', pPhases], ['orat', p?.stageDocs?.orat?.phases||{}], ['project_completion', p?.stageDocs?.project_completion?.phases||{}]].forEach(([key, ph]) => {
+  ['project_execution', 'orat', 'project_completion'].forEach(key => {
+    const ph = pPhases[key] || {};
     const startEl = document.getElementById(`fp-${key}-start`);
     const endEl   = document.getElementById(`fp-${key}-end`);
     if (startEl) startEl.value = ph.plannedStart || '';
@@ -5493,28 +5621,23 @@ function saveProject() {
   } else {
     state.projects.unshift({id:'p_'+Date.now(),createdAt:now,updatedAt:now,stageDocs:{},...base});
   }
-  // Save planned construction schedule dates into stageDocs
+  // Save planned construction schedule dates into stageDocs.project_execution.phases[key] —
+  // the same nested shape savePhaseField/the schedule table/executive report all read from.
+  // (Previously wrote flat onto stageDocs.<key>.phases.plannedStart, a location nothing else
+  // reads — see CHANGELOG.)
   const phaseKeys = ['project_execution','orat','project_completion'];
   phaseKeys.forEach(key => {
     const startVal = document.getElementById(`fp-${key}-start`)?.value || null;
     const endVal   = document.getElementById(`fp-${key}-end`)?.value   || null;
-    if (editId) {
-      const proj = state.projects.find(x=>x.id===editId);
-      if (proj) {
-        const sd = ensureStageDocs(proj, key);
-        if (!sd.phases) sd.phases = {};
-        if (startVal !== null) sd.phases.plannedStart = startVal;
-        if (endVal   !== null) sd.phases.plannedEnd   = endVal;
-      }
-    } else {
-      // Will be patched after push since project isn't in array yet — patch first element
-      const newProj = state.projects[0];
-      if (newProj) {
-        const sd = ensureStageDocs(newProj, key);
-        if (!sd.phases) sd.phases = {};
-        if (startVal !== null) sd.phases.plannedStart = startVal;
-        if (endVal   !== null) sd.phases.plannedEnd   = endVal;
-      }
+    // Will be patched after push since a brand-new project isn't in the array yet — patch
+    // the first element in that case.
+    const proj = editId ? state.projects.find(x=>x.id===editId) : state.projects[0];
+    if (proj) {
+      const sd = ensureStageDocs(proj, 'project_execution');
+      if (!sd.phases) sd.phases = {};
+      if (!sd.phases[key]) sd.phases[key] = {};
+      if (startVal !== null) sd.phases[key].plannedStart = startVal;
+      if (endVal   !== null) sd.phases[key].plannedEnd   = endVal;
     }
   });
   saveProjects(); closeAddModal(true);
@@ -11158,13 +11281,16 @@ function vpRecordCheck() {
 
 // ── Main app startup ──────────────────────────────────────────────────────
 const _vpParams = new URLSearchParams(location.search);
-// Cloud sync client is a `defer`'d CDN script — not guaranteed loaded until DOMContentLoaded.
-// Registered unconditionally (both branches below) so the ?verify= pop-out window also gets
-// a Supabase client and restores the same signed-in session, pushing its own writes rather
-// than silently bypassing sync.
-document.addEventListener('DOMContentLoaded', initCloudSync);
 if (_vpParams.get('verify')) {
-  // Verify page mode — load state from localStorage then render verify UI
+  // Verify page mode — load state from localStorage then render verify UI.
+  // Deliberately NOT running cloud sync here: this window and the main app window share
+  // localStorage but not in-memory sync state (sbDirty/sbLastPulledAt/sbPulled), so a pull in
+  // either window can silently overwrite an unsynced edit made in the other with no conflict
+  // signal (review-caught, see CHANGELOG). The verify page's edits already reach the cloud
+  // indirectly — they go through lsSet(STORAGE_KEY,...) same as everything else, and the main
+  // window picks them up via its own storage/BroadcastChannel listener and pushes them from
+  // there. Making this window sync independently is a real feature (works even with the main
+  // tab closed) but needs shared, not per-window, dirty tracking — tracked as a follow-up.
   try { state.projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { state.projects = []; }
   initVerifyMode(
     _vpParams.get('pid'),
@@ -11186,17 +11312,27 @@ if (_vpParams.get('verify')) {
     govState = { actions: [], persons: [] };
     lsSet(GOVERNANCE_KEY, govState);
   }
-  // Seed one sample project if no projects exist yet
-  if (state.projects.length === 0) {
+  // Seed one sample project if no projects exist yet — but never when that emptiness is
+  // actually corrupted data (loadProjects() sets _storageCorrupt and stashes the raw value
+  // under `${STORAGE_KEY}_corrupt_backup`): overwriting a truncated-but-maybe-recoverable
+  // write with demo data would destroy it permanently on the very first load after the
+  // corruption happened.
+  if (state.projects.length === 0 && !_storageCorrupt) {
     seedProjects();
     state.projects = state.projects.slice(0, 1); // keep only first demo project
     lsSet(STORAGE_KEY, state.projects);
+  } else if (_storageCorrupt) {
+    alert('⚠ Your saved project data could not be read (it may be corrupted or an interrupted save) and was left untouched instead of being replaced. A backup copy of the unreadable data was kept under the browser storage key "'
+      + STORAGE_KEY + '_corrupt_backup" — export it via a browser console (localStorage.getItem(...)) and share it with the app owner if you need it recovered.');
   }
   state.projects.forEach(p=>{ if(p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
   renderSidebar();
   showHomepage();
   // Session modal HTML is parsed after this script block, so defer until DOM is ready
   document.addEventListener('DOMContentLoaded', openSessionModal);
+  // Cloud sync client is a `defer`'d CDN script — not guaranteed loaded until DOMContentLoaded.
+  // Main-app window only — see the comment in the verify-mode branch above for why.
+  document.addEventListener('DOMContentLoaded', initCloudSync);
   // Nudge: if there are edits not yet written to a downloaded Session file, warn before leaving.
   window.addEventListener('beforeunload', e => {
     if (_dirtySinceBackup) { e.preventDefault(); e.returnValue = ''; }
@@ -13706,38 +13842,63 @@ function downloadSession() {
   setBackupDirty(false);
 }
 
-function loadSessionFile(input) {
+async function loadSessionFile(input) {
   const file = input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const msg = document.getElementById('sessionUploadMsg');
-    try {
-      const data = JSON.parse(e.target.result);
-      if (!data.projects && !data.governance) throw new Error('Unrecognised format');
-      if (data.projects)    lsSet(STORAGE_KEY,      data.projects);
-      if (data.governance)  lsSet(GOVERNANCE_KEY,   data.governance);
-      if (data.kpiSettings) lsSet(KPI_SETTINGS_KEY, data.kpiSettings);
-      // Reload state
-      loadProjects(); loadGovernance(); loadKPISettings();
-      state.projects.forEach(p => { if (p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
-      renderSidebar(); showHomepage();
-      // Show success, update summary
-      msg.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:6px;background:var(--green-lo);color:var(--green);';
-      const exp = data.exportedAt ? new Date(data.exportedAt).toLocaleString() : 'unknown date';
-      msg.textContent = `✓ Loaded — ${state.projects.length} project(s) · exported ${exp}`;
-      msg.classList.remove('hidden');
-      updateSessionSummary();
-      // Freshly loaded state matches the uploaded file — nothing to back up yet.
-      setBackupDirty(false);
-    } catch(err) {
-      msg.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:6px;background:var(--red-lo);color:var(--red);';
-      msg.textContent = '✗ Invalid file — please select a valid AIMO session JSON.';
-      msg.classList.remove('hidden');
-    }
+  const msg = document.getElementById('sessionUploadMsg');
+  const showErr = (text) => {
+    msg.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:6px;background:var(--red-lo);color:var(--red);';
+    msg.textContent = text;
+    msg.classList.remove('hidden');
     input.value = '';
   };
-  reader.readAsText(file);
+  // C2: importing replaces the whole session — confirm first if there are edits not yet
+  // captured in a downloaded backup, so a mis-click can't silently erase unsaved work.
+  if (_dirtySinceBackup && !await showConfirm('You have changes not yet saved to a Session file. Loading a different session will replace them. Continue?')) {
+    input.value = '';
+    return;
+  }
+  const text = await file.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    showErr('✗ Invalid file — not valid JSON.');
+    return;
+  }
+  if (!data.projects && !data.governance) { showErr('✗ Invalid file — please select a valid AIMO session JSON.'); return; }
+  // C1: validate shape before writing anything — a malformed projects/governance value
+  // (e.g. an object instead of an array) previously passed this point, got persisted, and
+  // then crashed the next page load outside any try/catch, bricking the app until localStorage
+  // was manually cleared.
+  if (data.projects !== undefined && !Array.isArray(data.projects)) { showErr('✗ Invalid file — "projects" must be a list.'); return; }
+  if (data.governance !== undefined && (typeof data.governance !== 'object' || data.governance === null || Array.isArray(data.governance))) { showErr('✗ Invalid file — "governance" must be an object.'); return; }
+  // C2: stash the outgoing session before overwriting it, so an accidental import of the
+  // wrong file is still recoverable from localStorage even without a manual export.
+  lsSet('aimo_pre_import_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) });
+  // H2: track whether every write actually succeeded (lsSet returns false on a quota failure)
+  // instead of assuming success and reporting "Loaded" regardless.
+  const results = [];
+  if (data.projects)    results.push(lsSet(STORAGE_KEY,      data.projects));
+  if (data.governance)  results.push(lsSet(GOVERNANCE_KEY,   data.governance));
+  if (data.kpiSettings) results.push(lsSet(KPI_SETTINGS_KEY, data.kpiSettings));
+  if (results.includes(false)) {
+    showErr('✗ Import only partially saved — your browser storage is full. Free up space (remove old projects, or use a fresh browser profile) and try again. Nothing was lost — your previous session is still in the "aimo_pre_import_backup" recovery key until you reload.');
+    return;
+  }
+  // Reload state
+  loadProjects(); loadGovernance(); loadKPISettings();
+  state.projects.forEach(p => { if (p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
+  renderSidebar(); showHomepage();
+  // Show success, update summary
+  msg.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:6px;background:var(--green-lo);color:var(--green);';
+  const exp = data.exportedAt ? new Date(data.exportedAt).toLocaleString() : 'unknown date';
+  msg.textContent = `✓ Loaded — ${state.projects.length} project(s) · exported ${exp}`;
+  msg.classList.remove('hidden');
+  updateSessionSummary();
+  // Freshly loaded state matches the uploaded file — nothing to back up yet.
+  setBackupDirty(false);
+  input.value = '';
 }
 
 function updateSessionSummary() {
