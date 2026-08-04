@@ -9,7 +9,22 @@ databases), per the same pattern described in
 | **AIMO Tracker** (top-level workspace page) | `3af84c76-5da9-81bd-bfe2-c4af93ff4a7c` — https://app.notion.com/p/3af84c765da981bdbfe2c4af93ff4a7c |
 | **Pending Changes (awaiting approval)** page | `3af84c76-5da9-8134-af2f-ef2d84e9fa12` — https://app.notion.com/p/3af84c765da98134af2fef2d84e9fa12 |
 | **Feedback Inbox** database | https://app.notion.com/p/94824d19762d4feb9cbee64de525930b |
+| **Code Audits — AIMO Projects Tracker** page | `3b284c76-5da9-81f2-a6b1-ee82cb0572a6` — https://app.notion.com/p/3b284c765da981f2a6b1ee82cb0572a6 |
 | Feedback Inbox data source (for API/query use) | `collection://2597b3b1-5765-455d-b9f5-60531f7c809b` |
+
+## Code Audits page (recurring)
+The **Code Audits** page above is the central audit record, updated on every audit
+run (first run: 04 Aug 2026, against v1.4 / `0d9795c`). Workflow:
+- The **audit agent** appends a new dated "Audit Run N" section per run and updates
+  the run-log table at the top; it also re-checks prior findings.
+- The **builder agent** implements fixes from those findings — only after the
+  owner's explicit "go" per `CLAUDE.md` — and updates each finding's `Status:`
+  marker (`Open` → `Fix implemented` → `Verified pre-deploy` → `Shipped`, or
+  `Won't fix` / `Reopened`).
+- A separate **pre-deploy audit agent** reviews implemented fixes before ship and
+  flips statuses to `Verified pre-deploy` (or reopens with a note).
+Findings carry exact line numbers valid at the audited commit plus quoted
+snippets for re-location after the file changes.
 
 ## Feedback Inbox schema
 - `Feedback` (title)
