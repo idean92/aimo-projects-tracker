@@ -17,7 +17,8 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
     than deleted, in case that data view is wanted again later.
 - QA: headless screenshots (homepage cards, Safety tab), 0 new console/page
   errors.
-- Not shipped — working copy only, per `CLAUDE.md`.
+- Shipped to https://aimo-projects-tracker.ideandaai.workers.dev on the owner's
+  explicit "ship it".
 
 ## v1.3 — 01 Aug 2026
 - **Reskin refinement pass**, matching specific patterns the owner pointed out from

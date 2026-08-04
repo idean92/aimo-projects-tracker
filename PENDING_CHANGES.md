@@ -7,7 +7,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 | # | Item | Status |
 |---|------|--------|
 | P6 | Consolidate Supabase into AIMO-SMS-Tracker (`projects` schema) | ✅ Done — pausing AIMO-Projects-Tracker project |
-| P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | Built (v1.4), not deployed |
+| P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | ✅ Shipped (v1.4) |
 | P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | ❌ Abandoned — see P6 |
 | P3 | Reskin refinement pass (accent bars, colored borders, orange nav-active, header button fix) | ✅ Shipped (v1.3) |
 | P2 | Purple design-system reskin (matching Safety Tracker) | ✅ Shipped (v1.2) |
@@ -51,9 +51,10 @@ _(none currently in progress)_
   removed the embedded MOC/Risk Verification/Observations sub-tabs (stale
   duplicate of the dedicated Safety Tracker app's functionality) and replaced
   with a redirect card linking to https://aimo-safety-tracker.ideandaai.workers.dev.
-  See `CHANGELOG.md` for detail. Built and QA'd; **not shipped**
-  (`public/index.html` untouched) pending explicit "ship it"/"deploy it". Both
-  Notion feedback rows marked Status: Planned.
+  See `CHANGELOG.md` for detail. Built, QA'd, and shipped to `public/index.html`
+  on the owner's explicit "ship it" — pushed to
+  https://aimo-projects-tracker.ideandaai.workers.dev. Both Notion feedback rows
+  marked Status: Planned.
 - **P3 — Reskin refinement pass** (v1.3, 01 Aug 2026, built directly from owner
   screenshots of the live Safety Tracker sibling). Accent bars on section headers,
   colored top borders on stat/KPI tiles, amber/orange active-nav-tab indicator, and
