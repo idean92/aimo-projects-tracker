@@ -16,63 +16,87 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
     (`aimo_projects`, `aimo_governance`, `aimo_kpi_settings`) as one JSON blob to
     a single shared team row (`projects.team_state`, `id='default'`) in the
     Supabase project shared with AIMO Safety Tracker (see `docs/SUPABASE.md`).
-  - Push is debounced off every local write (hooked at `lsSet()` itself, so it
-    also covers the `?verify=` pop-out's writes, not just the main app's save
-    functions) and pulls on sign-in and on tab refocus.
+    Push is debounced off every local write (hooked at `lsSet()` itself) and
+    pulls on sign-in and on tab refocus.
   - **Data-safety design: optimistic concurrency.** Every push is a
-    compare-and-swap on the row's `updated_at`. If someone else saved first, we
-    pull their version in and show a blocking alert rather than silently
-    overwriting their work — the user is told to re-check and redo their last
-    edit if needed. Local writes always happen before any cloud call, so a
-    network or auth failure never risks local data — it only fails to sync
-    (shown as a red status dot), degrading gracefully to today's local-only
-    behavior.
+    compare-and-swap on the row's `updated_at` (enforced by a `BEFORE UPDATE`
+    trigger on the table — see `docs/SUPABASE.md`). If someone else saved
+    first, we pull their version in and show a blocking alert rather than
+    silently overwriting their work. Local writes always happen before any
+    cloud call, so a network or auth failure never risks local data — it only
+    fails to sync (shown as a red status dot), degrading gracefully to
+    local-only behavior. A pull that's about to overwrite local data first
+    stashes it to a recovery key (`aimo_pre_pull_backup`) — one level of undo,
+    recoverable from DevTools if a conflict resolution or a first-sync-after-
+    offline discards more than expected.
+  - **The `?verify=` pop-out window does not run its own cloud sync client**
+    (deliberately, after a review found per-window dirty-tracking state
+    doesn't compose safely with two windows sharing one `localStorage`). Its
+    edits still reach the cloud: they land in `localStorage` the same way any
+    edit does, the main window's existing `aimoRefresh`/`BroadcastChannel`/
+    `storage`-event listeners (which already exist to re-render on the
+    pop-out's saves) now also schedule a push when they see real content
+    change — which incidentally covers two ordinary tabs of the main app both
+    open at once, too, since the native `storage` event fires for that same
+    way.
   - Realtime cross-device push is a deliberate follow-up, not in this release —
     pull-on-sign-in + pull-on-refocus covers a small team well enough for now.
-- QA: headless Playwright — CDN-blocked boot (graceful degradation, sync button
-  stays hidden, 0 unexpected console errors beyond pre-existing baseline noise),
-  a mocked Supabase client exercising sign-in → pull/hydrate, a local edit →
-  CAS push, a simulated conflict → pull-and-alert, and sign-out → UI reset — all
-  verified working as designed.
-- **Reviewed by an independent pass before shipping** (per `CLAUDE.md`'s rule for
-  architecturally significant / data-loss-risk changes) — it found real problems,
-  all fixed and re-verified before this entry:
-  - **Backend, blocker:** the CAS's `updated_at` column was INSERT-only (no
-    trigger updated it), so the concurrency check always matched and pushes
-    would have silently clobbered each other with zero conflict detection —
-    the entire data-safety design was inert. Fixed with a `BEFORE UPDATE`
-    trigger (migration `projects_team_state_updated_at_trigger_and_grants`,
-    see `docs/SUPABASE.md`).
-  - **Backend, blocker:** the `authenticated` role had RLS policies but no
-    actual `GRANT` on the schema/table — every real client query would have
-    403'd. Same migration adds the missing `usage`/`select`/`insert`/`update`
-    grants; verified live against the database.
-  - **Client, blocker:** a slow/failed initial pull right after sign-in raced
-    against `sbSchedulePush()` — since no baseline had been pulled yet, a push
-    landing in that window took the "first-ever" upsert path and could have
-    blind-overwritten the team's real cloud data with a fresh/demo local
-    state. Fixed with a `sbPulled` gate: pushes are held (not dropped) until
-    a pull has actually completed at least once, then auto-flushed.
-  - **Client, should-fix:** tab refocus unconditionally pulled, which could
-    silently overwrite an unsynced local edit still sitting in the debounce
-    window. Fixed with a `sbDirty` flag — refocus now pushes instead of
-    pulling while there's an unsynced edit, and the conflict-resolution pull
-    (which *must* override a losing local edit) explicitly forces past this
-    guard.
-  - **Client, should-fix:** the `?verify=` pop-out window never initialized
-    cloud sync, so its writes silently never reached the cloud. Fixed by
-    initializing cloud sync unconditionally in the boot sequence rather than
-    only in the main-app branch.
-  - **Client, should-fix:** a push arriving while another was already in
-    flight was dropped outright (debounce already cleared). Fixed with a
-    retry flag that re-schedules it once the in-flight push finishes.
-  - **Client, hardening:** added Subresource Integrity (`integrity` +
-    `crossorigin`) to the Supabase CDN `<script>` tag.
-  - Re-verified with new/updated headless tests targeting each fix directly
-    (dirty-edit-survives-refocus, push-deferred-until-first-pull-then-
-    auto-flushed, conflict path still force-overwrites correctly, verify
-    pop-out gets a live client) plus a second independent review pass on the
-    fixes themselves.
+  - **Reviewed by multiple independent passes before shipping** (per
+    `CLAUDE.md`'s rule for architecturally significant / data-loss-risk
+    changes) — this is
+    concurrency logic with a lot of surface area (two windows, offline/online
+    transitions, sign-out mid-flight, conflicting simultaneous edits), and
+    review kept finding real problems through most of those passes: an inert
+    CAS (missing DB trigger), missing DB grants, a blind-overwrite race on
+    first sign-in, refocus silently clobbering unsynced edits, a first-push
+    race with no conflict detection, session state not surviving sign-out
+    correctly, an offline-recovery path that could destroy hours of work with
+    no backup, and — the trickiest one, requiring two separate fix attempts —
+    the pop-out window's edits silently never reaching the cloud at all
+    (partly pre-existing, partly a regression introduced by an earlier fix in
+    this same sequence; corrected as described above). All fixed and
+    re-verified; see the git history on this branch for the full
+    round-by-round detail if needed.
+  - QA: headless Playwright throughout — CDN-blocked boot (graceful
+    degradation), a mocked Supabase client exercising sign-in/pull/push/
+    conflict/sign-out, and targeted tests for each fix above (dirty-edit-
+    survives-refocus, offline-work-recoverable-via-backup, cross-window
+    sign-out reset, verify-pop-out-edit-reaches-cloud, echo-suppression
+    between tabs, and more) — 0 unexpected console errors beyond pre-existing
+    baseline noise.
+
+- **Fixed: 6 Critical/High findings from an independent code audit** (Notion:
+  "Code Audits — AIMO Projects Tracker", Audit Run 1, against v1.4/`0d9795c`;
+  see `PENDING_CHANGES.md` P9/P11/P12 for the full audit context — the
+  remaining Medium/Low findings from that audit are still pending, not in this
+  release):
+  - **Session import no longer crashes the app on a malformed file** (C1) —
+    `projects`/`governance` shape is validated before anything is written;
+    previously an unvalidated non-array `projects` value could pass import,
+    persist, then crash the very next page load outside any try/catch.
+  - **Session import now confirms before replacing unsaved edits, and backs up
+    the outgoing session first** (C2) — to a new `aimo_pre_import_backup`
+    recovery key, recoverable from DevTools.
+  - **Corrupted (unparseable) localStorage is now preserved, not silently
+    replaced by demo data** (H1) — stashed under `aimo_projects_corrupt_backup`
+    with an alert, instead of the previous behavior of seeding fresh sample
+    data over data that might have been recoverable.
+  - **A failed storage write during import is now detected and reported**
+    (H2), instead of the import claiming success regardless.
+  - **Planned construction-schedule dates entered in the Add/Edit modal now
+    save to the same location every other view reads** (H3) — they previously
+    wrote to a flat location nothing else read, so entered dates never showed
+    up in the schedule table, executive report, or overview; a one-time
+    migration recovers any dates already saved under the old broken location.
+  - **KREI (KPI 4) now scores fairly when only some of its components have
+    data** (H4) — it previously coerced an unmeasured component to 0 and
+    scored it against the full 100-point scale (e.g. perfect resubmission
+    timing alone showed as 40/100 instead of 100/100); now pro-rated over only
+    the components actually measured.
+  - QA: headless tests for each fix — malformed-import-rejected, corrupted-
+    data-survives-boot, quota-failure-detected, phase-date-round-trip +
+    migration, KREI-pro-rating.
+
 - **Not shipped in this entry** — built and QA'd on the working copy only; per
   `CLAUDE.md`, deploying to `public/index.html` requires a separate, explicit
   "ship it."

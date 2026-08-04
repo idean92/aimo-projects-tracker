@@ -2574,6 +2574,7 @@ function sbResetSessionState() {
   sbPulled = false;
   sbDirty = false;
   sbNeedsRetryPush = false;
+  _sbLastSyncedSnapshot = null; // stale from the previous session — harmless today (the next sign-in's pull always has sbLastPulledAt===null so it always applies and rewrites this), but keep the "resets everything" contract honest
   // Bump the session generation so a push/pull already in flight from before this reset (its
   // network request can't be cancelled) recognizes on completion that it no longer belongs to
   // the live session and skips writing its now-stale result over fresh state — this is what
@@ -11398,7 +11399,16 @@ if (_vpParams.get('verify')) {
     loadProjects();
     if (state.selectedId) renderProjectDetail();
     renderSidebar();
-    sbNoteExternalStorageChange();
+    // Only the `_aimo_sync` heartbeat, not a bare STORAGE_KEY change, should trigger a push
+    // here: STORAGE_KEY alone fires for ANY other tab's write, including another ordinary main-
+    // app tab's own edit — which that tab already pushes itself via its own lsSet() hook.
+    // Pushing again here would duplicate it under the same CAS token, guaranteeing the loser
+    // gets a false "someone else's changes were loaded" conflict (and can even overwrite a
+    // keystroke made in the losing tab's own debounce window). `_aimo_sync` is written
+    // exclusively by the ?verify= pop-out (see vpSaveNow), so gating on it still catches every
+    // pop-out edit — it always touches `_aimo_sync` right after STORAGE_KEY — while correctly
+    // excluding tab-to-tab echoes of a main-app edit that's already covered.
+    if (e.key === '_aimo_sync') sbNoteExternalStorageChange();
   });
   // Polling fallback — picks up verify-page saves when storage events don't fire on file://
   let _lastSyncVal = localStorage.getItem('_aimo_sync');
