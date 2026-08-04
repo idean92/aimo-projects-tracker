@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | Built (v1.4), not deployed |
 | P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | Built + tested, not deployed to Access |
 | P3 | Reskin refinement pass (accent bars, colored borders, orange nav-active, header button fix) | ✅ Shipped (v1.3) |
 | P2 | Purple design-system reskin (matching Safety Tracker) | ✅ Shipped (v1.2) |
@@ -47,6 +48,16 @@ _(none yet)_
   `docs/D1-TRIAL.md` for the full remaining checklist.
 
 ## ✅ Shipped
+- **P5 — First real user feedback, addressed** (v1.4, 01 Aug 2026). Source: two
+  submissions via the in-app feedback button (Notion Feedback Inbox). (1) Project
+  cards: removed crosshair corner brackets, replaced with a frosted-glass card
+  (translucent + backdrop blur, "iPhone glass" look as requested). (2) Safety tab:
+  removed the embedded MOC/Risk Verification/Observations sub-tabs (stale
+  duplicate of the dedicated Safety Tracker app's functionality) and replaced
+  with a redirect card linking to https://aimo-safety-tracker.ideandaai.workers.dev.
+  See `CHANGELOG.md` for detail. Built and QA'd; **not shipped**
+  (`public/index.html` untouched) pending explicit "ship it"/"deploy it". Both
+  Notion feedback rows marked Status: Planned.
 - **P3 — Reskin refinement pass** (v1.3, 01 Aug 2026, built directly from owner
   screenshots of the live Safety Tracker sibling). Accent bars on section headers,
   colored top borders on stat/KPI tiles, amber/orange active-nav-tab indicator, and

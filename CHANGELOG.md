@@ -3,6 +3,22 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v1.4 — 01 Aug 2026
+- **First real user feedback came in via the in-app button** (see
+  `docs/NOTION.md`) — both items addressed:
+  - **Project cards**: removed the crosshair corner brackets, replaced with a
+    frosted-glass card treatment (translucent white + backdrop blur, rounded
+    18px corners) per the request for an "iPhone glass" look.
+  - **Safety tab**: removed the embedded MOC/Risk Verification/Observations
+    sub-tabs (a stale, unmaintained duplicate of functionality that lives in
+    the dedicated AIMO Safety Tracker app) and replaced with a simple redirect
+    card linking out to https://aimo-safety-tracker.ideandaai.workers.dev. The
+    underlying `buildSafety*()` functions are left defined but unused rather
+    than deleted, in case that data view is wanted again later.
+- QA: headless screenshots (homepage cards, Safety tab), 0 new console/page
+  errors.
+- Not shipped — working copy only, per `CLAUDE.md`.
+
 ## v1.3 — 01 Aug 2026
 - **Reskin refinement pass**, matching specific patterns the owner pointed out from
   the live Safety Tracker sibling (screenshots, not just the written design doc):
