@@ -48,13 +48,34 @@ create table projects.team_state (
   were not touched** — different schema, different RLS policies, verified
   row-count-unchanged before and after this migration.
 
-## ⚠️ Manual step needed before client code can use this
-The `projects` schema needs to be added to the **exposed schemas** list in this
-project's API settings (Dashboard → Settings → API → Data API → "Exposed schemas",
-currently just `public`) before PostgREST/supabase-js can query
-`projects.team_state` — there's no Supabase MCP tool for this setting, it's
-dashboard-only. Until that's done, the schema/table exist and are correct, but are
-not reachable from a client.
+**Added 04 Aug 2026** via migration `projects_team_state_updated_at_trigger_and_grants`,
+found missing during code review of the client integration (see `CHANGELOG.md` v2.0):
+```sql
+create or replace function projects.set_team_state_updated_at()
+returns trigger language plpgsql set search_path = ''
+as $$ begin new.updated_at = now(); return new; end; $$;
+
+create trigger team_state_set_updated_at
+before update on projects.team_state
+for each row execute function projects.set_team_state_updated_at();
+
+grant usage on schema projects to authenticated;
+grant select, insert, update on projects.team_state to authenticated;
+```
+- The trigger is what makes the client's optimistic-concurrency compare-and-swap
+  (CAS on `updated_at`) actually work — without it, `updated_at` was INSERT-only
+  and the CAS predicate always matched, so pushes silently clobbered each other.
+- The grants were simply missing before this — `authenticated` had RLS policies
+  but no underlying `GRANT`, so every client query would have 403'd regardless of
+  RLS. Verified live: `has_schema_privilege('authenticated','projects','USAGE')`
+  now returns `true`, and grants show up in `information_schema.role_table_grants`.
+
+## Exposed schemas
+Confirmed working — a signed-out `curl` against `/rest/v1/team_state` with
+`Accept-Profile: projects` returns `42501 permission denied for schema projects`
+(RLS/grant-denied, the schema resolved correctly) rather than a schema-not-found
+error, confirming the `projects` schema is in the exposed-schemas list (Dashboard →
+Settings → API → Data API).
 
 Public sign-ups should also be confirmed disabled on this project (shared with the
 Safety Tracker's real users) — likely already handled as part of that app's own

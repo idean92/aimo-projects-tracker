@@ -34,8 +34,45 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
   a mocked Supabase client exercising sign-in → pull/hydrate, a local edit →
   CAS push, a simulated conflict → pull-and-alert, and sign-out → UI reset — all
   verified working as designed.
-- Reviewed by an independent pass before shipping, per `CLAUDE.md`'s rule for
-  architecturally significant / data-loss-risk changes.
+- **Reviewed by an independent pass before shipping** (per `CLAUDE.md`'s rule for
+  architecturally significant / data-loss-risk changes) — it found real problems,
+  all fixed and re-verified before this entry:
+  - **Backend, blocker:** the CAS's `updated_at` column was INSERT-only (no
+    trigger updated it), so the concurrency check always matched and pushes
+    would have silently clobbered each other with zero conflict detection —
+    the entire data-safety design was inert. Fixed with a `BEFORE UPDATE`
+    trigger (migration `projects_team_state_updated_at_trigger_and_grants`,
+    see `docs/SUPABASE.md`).
+  - **Backend, blocker:** the `authenticated` role had RLS policies but no
+    actual `GRANT` on the schema/table — every real client query would have
+    403'd. Same migration adds the missing `usage`/`select`/`insert`/`update`
+    grants; verified live against the database.
+  - **Client, blocker:** a slow/failed initial pull right after sign-in raced
+    against `sbSchedulePush()` — since no baseline had been pulled yet, a push
+    landing in that window took the "first-ever" upsert path and could have
+    blind-overwritten the team's real cloud data with a fresh/demo local
+    state. Fixed with a `sbPulled` gate: pushes are held (not dropped) until
+    a pull has actually completed at least once, then auto-flushed.
+  - **Client, should-fix:** tab refocus unconditionally pulled, which could
+    silently overwrite an unsynced local edit still sitting in the debounce
+    window. Fixed with a `sbDirty` flag — refocus now pushes instead of
+    pulling while there's an unsynced edit, and the conflict-resolution pull
+    (which *must* override a losing local edit) explicitly forces past this
+    guard.
+  - **Client, should-fix:** the `?verify=` pop-out window never initialized
+    cloud sync, so its writes silently never reached the cloud. Fixed by
+    initializing cloud sync unconditionally in the boot sequence rather than
+    only in the main-app branch.
+  - **Client, should-fix:** a push arriving while another was already in
+    flight was dropped outright (debounce already cleared). Fixed with a
+    retry flag that re-schedules it once the in-flight push finishes.
+  - **Client, hardening:** added Subresource Integrity (`integrity` +
+    `crossorigin`) to the Supabase CDN `<script>` tag.
+  - Re-verified with new/updated headless tests targeting each fix directly
+    (dirty-edit-survives-refocus, push-deferred-until-first-pull-then-
+    auto-flushed, conflict path still force-overwrites correctly, verify
+    pop-out gets a live client) plus a second independent review pass on the
+    fixes themselves.
 - **Not shipped in this entry** — built and QA'd on the working copy only; per
   `CLAUDE.md`, deploying to `public/index.html` requires a separate, explicit
   "ship it."

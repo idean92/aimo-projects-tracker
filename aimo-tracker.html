@@ -1722,7 +1722,7 @@ body.verify-mode .fb-fab{display:none!important;}
      reasonably be vendored inline, and cloud sync needs network access
      regardless. If this is blocked/offline, window.supabase is simply
      undefined and the app stays fully local-only (see initCloudSync). -->
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -2437,6 +2437,9 @@ let sbClient = null;
 let sbUser = null;
 let sbLastPulledAt = null; // updated_at of the last row we pulled/pushed — the optimistic-concurrency CAS token
 let sbSyncing = false;
+let sbPulled = false; // true once a pull has completed at least once this session — pushes are held until then, so a slow/failed initial pull can never upsert-overwrite a teammate's row with stale local data
+let sbDirty = false; // true while a local edit hasn't been confirmed synced — refocus must not pull-and-clobber while this is set
+let sbNeedsRetryPush = false; // a push arrived while one was already in flight; debounce already cleared, so this flag is the only record of it
 let sbPushTimer = null;
 let sbSyncStatus = 'signed-out'; // signed-out | syncing | synced | conflict | error
 let _sbApplyingRemote = false; // guards a pull's lsSet() writes from re-triggering a push
@@ -2523,25 +2526,29 @@ async function cloudSignOut() {
 
 function sbSchedulePush() {
   if (!sbClient || !sbUser) return; // no session yet — nothing to sync to
+  sbDirty = true;
   clearTimeout(sbPushTimer);
   sbPushTimer = setTimeout(sbPushNow, 800);
 }
 
 async function sbPushNow() {
-  if (!sbClient || !sbUser || sbSyncing) return;
+  if (!sbClient || !sbUser) return;
+  if (!sbPulled) return; // initial pull hasn't resolved yet — stay dirty, sbPullNow() flushes this once it lands
+  if (sbSyncing) { sbNeedsRetryPush = true; return; } // already mid-push — don't drop this write, retry once it finishes
   sbSyncing = true;
   setSyncStatus('syncing');
   const payload = { projects: state.projects, governance: govState, kpiSettings: kpiSettings };
   try {
     if (!sbLastPulledAt) {
-      // First-ever push for this session (e.g. fresh sign-in with no prior pull, or the
-      // team's very first save) — upsert since the row may not exist yet.
+      // First-ever push for this team (sbPulled is true and the prior pull found no row) —
+      // upsert since the row doesn't exist yet.
       const { data, error } = await sbTable()
         .upsert({ id: 'default', data: payload, updated_by: sbUser.id }, { onConflict: 'id' })
         .select('updated_at')
         .single();
       if (error) throw error;
       sbLastPulledAt = data.updated_at;
+      sbDirty = false;
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     } else {
       // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
@@ -2554,52 +2561,76 @@ async function sbPushNow() {
       if (error) throw error;
       if (!data) {
         // 0 rows matched — someone else saved first. Pull their version in rather
-        // than silently clobbering it.
-        await sbPullNow();
+        // than silently clobbering it — force:true because this pull must win over
+        // the local edit that just lost the race (that's the whole point of this
+        // path), unlike a passive background pull which defers to a dirty local edit.
+        sbSyncing = false;
+        await sbPullNow(true);
         setSyncStatus('conflict');
         alert('Someone else\'s changes were just loaded from the cloud (your edit may not have been saved) — please check your last change and redo it if it\'s missing.');
         return;
       }
       sbLastPulledAt = data.updated_at;
+      sbDirty = false;
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     }
   } catch (err) {
     setSyncStatus('error', 'Sync error — your local save is safe, but it hasn\'t reached the cloud yet.');
   } finally {
     sbSyncing = false;
+    if (sbNeedsRetryPush) { sbNeedsRetryPush = false; sbSchedulePush(); }
   }
 }
 
-async function sbPullNow() {
+async function sbPullNow(force) {
   if (!sbClient || !sbUser) return;
   setSyncStatus('syncing');
   try {
     const { data, error } = await sbTable().select('data, updated_at').eq('id', 'default').maybeSingle();
     if (error) throw error;
     if (data) {
-      _sbApplyingRemote = true;
-      try {
-        const d = data.data || {};
-        if (d.projects) lsSet(STORAGE_KEY, d.projects);
-        if (d.governance) lsSet(GOVERNANCE_KEY, d.governance);
-        if (d.kpiSettings) lsSet(KPI_SETTINGS_KEY, d.kpiSettings);
-      } finally {
-        _sbApplyingRemote = false;
+      if (sbDirty && !force) {
+        // A local edit is already queued to push and hasn't been confirmed synced —
+        // don't clobber it with this (possibly now-stale) remote blob. Just adopt the
+        // CAS token so the pending push compares against the row we just saw; if the
+        // row changed again in the meantime, that push's own CAS/conflict handling
+        // catches it (pull-and-alert), so this never silently drops someone else's work.
+        sbLastPulledAt = data.updated_at;
+      } else {
+        // force=true (called from sbPushNow's conflict branch) intentionally overrides
+        // sbDirty: the local edit just lost the CAS race and is what the alert below
+        // tells the user to re-check/redo, so remote must win here regardless.
+        _sbApplyingRemote = true;
+        try {
+          const d = data.data || {};
+          if (d.projects) lsSet(STORAGE_KEY, d.projects);
+          if (d.governance) lsSet(GOVERNANCE_KEY, d.governance);
+          if (d.kpiSettings) lsSet(KPI_SETTINGS_KEY, d.kpiSettings);
+        } finally {
+          _sbApplyingRemote = false;
+        }
+        sbLastPulledAt = data.updated_at;
+        sbDirty = false;
+        loadProjects();
+        loadGovernance();
+        loadKPISettings();
+        state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
+        if (state.selectedId) renderProjectDetail();
+        renderSidebar();
+        setBackupDirty(true);
       }
-      sbLastPulledAt = data.updated_at;
-      loadProjects();
-      loadGovernance();
-      loadKPISettings();
-      state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
-      if (state.selectedId) renderProjectDetail();
-      renderSidebar();
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
     } else {
       // No row yet (first-ever sign-in for this team) — nothing to pull.
       setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
     }
+    sbPulled = true;
+    if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight — flush it now that we have a baseline
   } catch (err) {
     setSyncStatus('error', 'Couldn\'t reach the cloud — working from local data.');
+    // sbPulled stays as-is: false blocks any push until a pull actually succeeds
+    // (never blind-overwrite the team's row); true (a prior successful pull) is
+    // untouched since sbLastPulledAt is still a valid CAS token.
   }
 }
 
@@ -2611,16 +2642,21 @@ function initCloudSync() {
   sbClient.auth.onAuthStateChange((event, session) => {
     sbUser = session ? session.user : null;
     if (!sbUser) { setSyncStatus('signed-out'); return; }
-    setSyncStatus('synced');
+    // Don't claim 'synced' here — sbPullNow() (called below, or by cloudSignIn) sets the
+    // real status once a pull actually completes. This fires on INITIAL_SESSION/TOKEN_REFRESHED
+    // too, which would otherwise mask a genuine in-progress/error state with a false "synced".
   });
   sbClient.auth.getSession().then(({ data }) => {
     if (data.session) {
       sbUser = data.session.user;
       sbPullNow();
     }
-  });
+  }).catch(() => setSyncStatus('error', 'Couldn\'t restore your session — sign in again.'));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && sbUser && !sbSyncing) sbPullNow();
+    if (document.visibilityState !== 'visible' || !sbUser || sbSyncing) return;
+    // If there's an unsynced local edit, push it (which itself pulls-and-alerts on a real
+    // conflict) instead of blindly pulling and overwriting that edit.
+    if (sbDirty) sbPushNow(); else sbPullNow();
   });
 }
 
@@ -11101,6 +11137,11 @@ function vpRecordCheck() {
 
 // ── Main app startup ──────────────────────────────────────────────────────
 const _vpParams = new URLSearchParams(location.search);
+// Cloud sync client is a `defer`'d CDN script — not guaranteed loaded until DOMContentLoaded.
+// Registered unconditionally (both branches below) so the ?verify= pop-out window also gets
+// a Supabase client and restores the same signed-in session, pushing its own writes rather
+// than silently bypassing sync.
+document.addEventListener('DOMContentLoaded', initCloudSync);
 if (_vpParams.get('verify')) {
   // Verify page mode — load state from localStorage then render verify UI
   try { state.projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { state.projects = []; }
@@ -11135,8 +11176,6 @@ if (_vpParams.get('verify')) {
   showHomepage();
   // Session modal HTML is parsed after this script block, so defer until DOM is ready
   document.addEventListener('DOMContentLoaded', openSessionModal);
-  // Cloud sync client is a `defer`'d CDN script — not guaranteed loaded until DOMContentLoaded
-  document.addEventListener('DOMContentLoaded', initCloudSync);
   // Nudge: if there are edits not yet written to a downloaded Session file, warn before leaving.
   window.addEventListener('beforeunload', e => {
     if (_dirtySinceBackup) { e.preventDefault(); e.returnValue = ''; }
