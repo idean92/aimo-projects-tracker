@@ -3,6 +3,43 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v2.0 — 04 Aug 2026
+- **New: cloud sync via Supabase**, matching the Safety Tracker sibling's UX
+  pattern. Major/architectural change — first time this app talks to a backend
+  for anything other than the feedback button.
+  - Email + password sign-in (invite-only project, no self-signup) via a new
+    header control (`#cloudSyncBtn`, first item in the top bar) that opens a
+    login modal. The control — and all cloud behavior — stays hidden if the
+    Supabase CDN script doesn't load (offline/blocked network): the app is
+    unaffected and works exactly as it always has, local-only.
+  - Syncs the same three localStorage keys `downloadSession()` already exports
+    (`aimo_projects`, `aimo_governance`, `aimo_kpi_settings`) as one JSON blob to
+    a single shared team row (`projects.team_state`, `id='default'`) in the
+    Supabase project shared with AIMO Safety Tracker (see `docs/SUPABASE.md`).
+  - Push is debounced off every local write (hooked at `lsSet()` itself, so it
+    also covers the `?verify=` pop-out's writes, not just the main app's save
+    functions) and pulls on sign-in and on tab refocus.
+  - **Data-safety design: optimistic concurrency.** Every push is a
+    compare-and-swap on the row's `updated_at`. If someone else saved first, we
+    pull their version in and show a blocking alert rather than silently
+    overwriting their work — the user is told to re-check and redo their last
+    edit if needed. Local writes always happen before any cloud call, so a
+    network or auth failure never risks local data — it only fails to sync
+    (shown as a red status dot), degrading gracefully to today's local-only
+    behavior.
+  - Realtime cross-device push is a deliberate follow-up, not in this release —
+    pull-on-sign-in + pull-on-refocus covers a small team well enough for now.
+- QA: headless Playwright — CDN-blocked boot (graceful degradation, sync button
+  stays hidden, 0 unexpected console errors beyond pre-existing baseline noise),
+  a mocked Supabase client exercising sign-in → pull/hydrate, a local edit →
+  CAS push, a simulated conflict → pull-and-alert, and sign-out → UI reset — all
+  verified working as designed.
+- Reviewed by an independent pass before shipping, per `CLAUDE.md`'s rule for
+  architecturally significant / data-loss-risk changes.
+- **Not shipped in this entry** — built and QA'd on the working copy only; per
+  `CLAUDE.md`, deploying to `public/index.html` requires a separate, explicit
+  "ship it."
+
 ## v1.4 — 01 Aug 2026
 - **First real user feedback came in via the in-app button** (see
   `docs/NOTION.md`) — both items addressed:

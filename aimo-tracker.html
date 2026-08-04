@@ -970,6 +970,11 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .btn-primary{background:var(--accent);color:#fff;}.btn-primary:hover{background:#5a2872;}.btn-primary:active{background:#4a1f5e;}
 .btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border);}.btn-ghost:hover{background:var(--bg-hover);color:var(--text-1);}
 .btn-ghost-dark{background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.25);}.btn-ghost-dark:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4);color:#fff;}
+.sync-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:1px;background:rgba(255,255,255,.4);}
+.sync-dot.syncing{background:var(--amber);}
+.sync-dot.synced{background:var(--green);}
+.sync-dot.conflict{background:var(--amber);}
+.sync-dot.error{background:var(--red);}
 .btn-danger{background:var(--red-lo);color:var(--red);border:1px solid rgba(192,57,43,.25);}.btn-danger:hover{background:rgba(192,57,43,.25);}
 .btn-sm{padding:5px 10px;font-size:11px;}.btn-xs{padding:3px 8px;font-size:10.5px;}
 
@@ -1712,6 +1717,12 @@ body.verify-mode .fb-fab{display:none!important;}
 //# sourceMappingURL=pptxgen.bundle.js.map
 
 </script>
+<!-- Supabase JS v2 (cloud sync) — the one deliberate exception to this file's
+     "everything inlined" convention: a hosted realtime DB client can't
+     reasonably be vendored inline, and cloud sync needs network access
+     regardless. If this is blocked/offline, window.supabase is simply
+     undefined and the app stays fully local-only (see initCloudSync). -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
 
@@ -1724,6 +1735,11 @@ body.verify-mode .fb-fab{display:none!important;}
     </div>
   </div>
   <div class="header-right">
+    <button id="cloudSyncBtn" class="btn btn-ghost-dark btn-sm hidden" onclick="openCloudAuthModal()" title="Cloud sync — sign in to sync with your team" style="gap:5px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"></path></svg>
+      <span id="cloudSyncLabel">Sign In</span>
+      <span id="cloudSyncDot" class="sync-dot"></span>
+    </button>
     <button id="sessionBtn" class="btn btn-ghost-dark btn-sm" onclick="openSessionModal()" title="Back up or restore session data" style="gap:5px;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
       Session
@@ -2203,8 +2219,8 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v1.4';
-const APP_DATE     = '01 Aug 2026';
+const APP_VERSION  = 'v2.0';
+const APP_DATE     = '04 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
 // Relative path so this works same-origin once the Cloudflare Worker (see
@@ -2369,6 +2385,9 @@ let _storageWarned = false;
 function lsSet(key, value) {
   try {
     localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+    if (!_sbApplyingRemote && (key === STORAGE_KEY || key === GOVERNANCE_KEY || key === KPI_SETTINGS_KEY)) {
+      sbSchedulePush();
+    }
     return true;
   } catch (e) {
     if (!_storageWarned) {
@@ -2401,6 +2420,209 @@ function loadGovernance() {
   govState.persons = govState.persons.map(p => typeof p === 'string' ? {name:p, org:''} : p);
 }
 function saveGovernance() { lsSet(GOVERNANCE_KEY, govState); setBackupDirty(true); }
+
+/* ══════════════════════════════════════════════════
+   CLOUD SYNC (Supabase) — optional team sync layer on top of localStorage.
+   Signing in is opt-in; the app works exactly as before local-only if
+   nobody signs in, or if the CDN script is blocked/offline (see
+   initCloudSync — window.supabase simply won't exist and the button stays
+   hidden). Whole-blob sync: the three keys below serialize into one JSON
+   row (projects.team_state, id='default') shared by the whole team.
+══════════════════════════════════════════════════ */
+const SUPABASE_URL = 'https://kvbmgyupyzegtgbnqktk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_2syo6yqH1QJHsTbGWqo8pw_g42_Vkkg';
+const SYNC_SCHEMA = 'projects'; // NOT 'public' — this app's tables live in their own schema in the shared Supabase project (docs/SUPABASE.md)
+const SYNC_TABLE = 'team_state';
+let sbClient = null;
+let sbUser = null;
+let sbLastPulledAt = null; // updated_at of the last row we pulled/pushed — the optimistic-concurrency CAS token
+let sbSyncing = false;
+let sbPushTimer = null;
+let sbSyncStatus = 'signed-out'; // signed-out | syncing | synced | conflict | error
+let _sbApplyingRemote = false; // guards a pull's lsSet() writes from re-triggering a push
+function sbTable() { return sbClient.schema(SYNC_SCHEMA).from(SYNC_TABLE); }
+
+function setSyncStatus(s, detail) {
+  sbSyncStatus = s;
+  const dot = document.getElementById('cloudSyncDot');
+  const label = document.getElementById('cloudSyncLabel');
+  if (dot) dot.className = 'sync-dot' + (s === 'signed-out' ? '' : ' ' + s);
+  if (label) {
+    label.textContent = s === 'signed-out' ? 'Sign In'
+      : s === 'syncing' ? 'Syncing…'
+      : s === 'synced' ? (sbUser ? sbUser.email : 'Synced')
+      : s === 'conflict' ? 'Updated'
+      : 'Sync error';
+  }
+  const syncDetail = document.getElementById('caSyncDetail');
+  if (syncDetail && detail) syncDetail.textContent = detail;
+}
+
+function openCloudAuthModal() {
+  const signedOut = document.getElementById('caSignedOut');
+  const signedIn = document.getElementById('caSignedIn');
+  const signInBtn = document.getElementById('caSignInBtn');
+  const signOutBtn = document.getElementById('caSignOutBtn');
+  if (sbUser) {
+    signedOut.classList.add('hidden');
+    signedIn.classList.remove('hidden');
+    signInBtn.classList.add('hidden');
+    signOutBtn.classList.remove('hidden');
+    document.getElementById('caUserEmail').textContent = sbUser.email;
+  } else {
+    signedOut.classList.remove('hidden');
+    signedIn.classList.add('hidden');
+    signInBtn.classList.remove('hidden');
+    signOutBtn.classList.add('hidden');
+  }
+  document.getElementById('cloudAuthOverlay').classList.remove('hidden');
+}
+function closeCloudAuthModal() { document.getElementById('cloudAuthOverlay').classList.add('hidden'); }
+
+let _caSigningIn = false;
+async function cloudSignIn() {
+  if (_caSigningIn || !sbClient) return;
+  const email = document.getElementById('caEmail').value.trim();
+  const password = document.getElementById('caPassword').value;
+  const statusEl = document.getElementById('caStatusMsg');
+  if (!email || !password) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Enter your email and password.';
+    return;
+  }
+  _caSigningIn = true;
+  const btn = document.getElementById('caSignInBtn');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  statusEl.className = 'fb-status-msg hidden';
+  try {
+    const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    sbUser = data.user;
+    document.getElementById('caPassword').value = '';
+    closeCloudAuthModal();
+    await sbPullNow();
+  } catch (err) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Sign in failed — check your email and password.';
+  } finally {
+    _caSigningIn = false;
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+async function cloudSignOut() {
+  if (!sbClient) return;
+  try { await sbClient.auth.signOut(); } catch (e) {}
+  sbUser = null;
+  sbLastPulledAt = null;
+  setSyncStatus('signed-out');
+  closeCloudAuthModal();
+}
+
+function sbSchedulePush() {
+  if (!sbClient || !sbUser) return; // no session yet — nothing to sync to
+  clearTimeout(sbPushTimer);
+  sbPushTimer = setTimeout(sbPushNow, 800);
+}
+
+async function sbPushNow() {
+  if (!sbClient || !sbUser || sbSyncing) return;
+  sbSyncing = true;
+  setSyncStatus('syncing');
+  const payload = { projects: state.projects, governance: govState, kpiSettings: kpiSettings };
+  try {
+    if (!sbLastPulledAt) {
+      // First-ever push for this session (e.g. fresh sign-in with no prior pull, or the
+      // team's very first save) — upsert since the row may not exist yet.
+      const { data, error } = await sbTable()
+        .upsert({ id: 'default', data: payload, updated_by: sbUser.id }, { onConflict: 'id' })
+        .select('updated_at')
+        .single();
+      if (error) throw error;
+      sbLastPulledAt = data.updated_at;
+      setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+    } else {
+      // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
+      const { data, error } = await sbTable()
+        .update({ data: payload, updated_by: sbUser.id })
+        .eq('id', 'default')
+        .eq('updated_at', sbLastPulledAt)
+        .select('updated_at')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        // 0 rows matched — someone else saved first. Pull their version in rather
+        // than silently clobbering it.
+        await sbPullNow();
+        setSyncStatus('conflict');
+        alert('Someone else\'s changes were just loaded from the cloud (your edit may not have been saved) — please check your last change and redo it if it\'s missing.');
+        return;
+      }
+      sbLastPulledAt = data.updated_at;
+      setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+    }
+  } catch (err) {
+    setSyncStatus('error', 'Sync error — your local save is safe, but it hasn\'t reached the cloud yet.');
+  } finally {
+    sbSyncing = false;
+  }
+}
+
+async function sbPullNow() {
+  if (!sbClient || !sbUser) return;
+  setSyncStatus('syncing');
+  try {
+    const { data, error } = await sbTable().select('data, updated_at').eq('id', 'default').maybeSingle();
+    if (error) throw error;
+    if (data) {
+      _sbApplyingRemote = true;
+      try {
+        const d = data.data || {};
+        if (d.projects) lsSet(STORAGE_KEY, d.projects);
+        if (d.governance) lsSet(GOVERNANCE_KEY, d.governance);
+        if (d.kpiSettings) lsSet(KPI_SETTINGS_KEY, d.kpiSettings);
+      } finally {
+        _sbApplyingRemote = false;
+      }
+      sbLastPulledAt = data.updated_at;
+      loadProjects();
+      loadGovernance();
+      loadKPISettings();
+      state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
+      if (state.selectedId) renderProjectDetail();
+      renderSidebar();
+      setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+    } else {
+      // No row yet (first-ever sign-in for this team) — nothing to pull.
+      setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
+    }
+  } catch (err) {
+    setSyncStatus('error', 'Couldn\'t reach the cloud — working from local data.');
+  }
+}
+
+function initCloudSync() {
+  if (typeof window.supabase === 'undefined') return; // CDN blocked/offline — stay local-only
+  sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const btn = document.getElementById('cloudSyncBtn');
+  if (btn) btn.classList.remove('hidden');
+  sbClient.auth.onAuthStateChange((event, session) => {
+    sbUser = session ? session.user : null;
+    if (!sbUser) { setSyncStatus('signed-out'); return; }
+    setSyncStatus('synced');
+  });
+  sbClient.auth.getSession().then(({ data }) => {
+    if (data.session) {
+      sbUser = data.session.user;
+      sbPullNow();
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && sbUser && !sbSyncing) sbPullNow();
+  });
+}
 
 /* ══════════════════════════════════════════════════
    STAGE DOCS — docList model
@@ -10913,6 +11135,8 @@ if (_vpParams.get('verify')) {
   showHomepage();
   // Session modal HTML is parsed after this script block, so defer until DOM is ready
   document.addEventListener('DOMContentLoaded', openSessionModal);
+  // Cloud sync client is a `defer`'d CDN script — not guaranteed loaded until DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', initCloudSync);
   // Nudge: if there are edits not yet written to a downloaded Session file, warn before leaving.
   window.addEventListener('beforeunload', e => {
     if (_dirtySinceBackup) { e.preventDefault(); e.returnValue = ''; }
@@ -13554,6 +13778,50 @@ function closeSessionModal() {
       <div style="display:flex;gap:8px;">
         <button class="btn btn-ghost btn-sm" onclick="closeFeedbackModal()">Cancel</button>
         <button class="btn btn-primary btn-sm" id="fbSendBtn" onclick="submitFeedback()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CLOUD SYNC LOGIN MODAL -->
+<div class="overlay hidden" id="cloudAuthOverlay" onclick="if(event.target===this)closeCloudAuthModal()">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-hdr">
+      <div>
+        <h2>Cloud Sync</h2>
+        <p>Sign in to sync this team's data across devices.</p>
+      </div>
+      <button class="close-btn" onclick="closeCloudAuthModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="caSignedOut">
+        <div class="fgrp">
+          <label>Email</label>
+          <input type="text" id="caEmail" placeholder="you@company.com" autocomplete="username">
+        </div>
+        <div class="fgrp" style="margin-top:12px;">
+          <label>Password</label>
+          <input type="password" id="caPassword" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();cloudSignIn();}">
+        </div>
+        <div class="fb-status-msg hidden" id="caStatusMsg"></div>
+      </div>
+      <div id="caSignedIn" class="hidden">
+        <div class="fgrp">
+          <label>Signed in as</label>
+          <div style="font-size:13px;color:var(--text-1);font-weight:600;" id="caUserEmail"></div>
+        </div>
+        <div class="fgrp" style="margin-top:12px;">
+          <label>Status</label>
+          <div style="font-size:12px;color:var(--text-2);" id="caSyncDetail">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <span style="font-size:10px;color:var(--text-3);">Invite-only — contact the project owner for access.</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="closeCloudAuthModal()">Close</button>
+        <button class="btn btn-primary btn-sm" id="caSignInBtn" onclick="cloudSignIn()">Sign In</button>
+        <button class="btn btn-danger btn-sm hidden" id="caSignOutBtn" onclick="cloudSignOut()">Sign Out</button>
       </div>
     </div>
   </div>

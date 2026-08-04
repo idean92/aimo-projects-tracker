@@ -60,12 +60,30 @@ Public sign-ups should also be confirmed disabled on this project (shared with t
 Safety Tracker's real users) — likely already handled as part of that app's own
 setup; re-verify if unsure.
 
-## What's NOT built yet
-`aimo-tracker.html` has no Supabase client code, no `AIMOCloud`-style sync adapter,
-no login UI — same as before consolidation. Building that is a real feature change
-and needs the owner's explicit go, per `CLAUDE.md`. When it happens, it should point
-at `projects.team_state` in this shared project (URL/key above), using
-`.schema('projects')` in supabase-js, rather than a standalone project.
+## Client integration — built (v2.0, 04 Aug 2026)
+`aimo-tracker.html` now has a Supabase client, email+password auth, and a
+whole-blob sync layer targeting `projects.team_state`. Summary (see `CHANGELOG.md`
+for the full entry):
+- CDN: `@supabase/supabase-js@2.45.4` (UMD, `<script defer>` in `<head>`) — the
+  one deliberate exception to this file's "everything inlined" convention.
+- Header control `#cloudSyncBtn` (hidden if the CDN didn't load) opens a login
+  modal (`#cloudAuthOverlay`); email+password only, invite-only (no self-signup
+  UI). Every `sbClient` query goes through `.schema('projects').from('team_state')`.
+- Sync payload is one JSON blob: `{projects, governance, kpiSettings}` — the same
+  three localStorage keys `downloadSession()` exports, keyed to the single shared
+  row `id='default'`.
+- Push is hooked off `lsSet()` itself (not the individual save functions), so it
+  fires from every write path, including the `?verify=` pop-out's direct `lsSet`
+  calls.
+- Optimistic concurrency: push is a compare-and-swap on `updated_at`. If another
+  session pushed first, the newer row is pulled in and a blocking `alert()` warns
+  the user their edit may not have saved — no silent clobbering.
+- Local writes always happen before any cloud call, so a network/auth failure
+  never risks local data — it only fails to sync (red status dot), degrading to
+  the original local-only behavior.
+- Not built yet: realtime (the publication is provisioned for a future pass); a
+  `visibilitychange` re-pull is the current lightweight substitute for staying
+  fresh across tabs/devices without an open connection.
 
 ## History
 - **01 Aug 2026, initial build:** created `AIMO-Projects-Tracker` as its own

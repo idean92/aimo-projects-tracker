@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P7 | Cloud sync (Supabase auth + team_state sync) — v2.0 big build | 🔧 Built + QA'd on working copy — awaiting review + explicit "ship it" |
 | P6 | Consolidate Supabase into AIMO-SMS-Tracker (`projects` schema) | ✅ Done — pausing AIMO-Projects-Tracker project |
 | P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | ✅ Shipped (v1.4) |
 | P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | ❌ Abandoned — see P6 |
@@ -22,7 +23,17 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
-_(none currently in progress)_
+- **P7 — Cloud sync (Supabase)**, the "big build" requested to bring
+  AIMO Tracker's header/sync UX in line with the Safety Tracker sibling. Email +
+  password sign-in, whole-blob sync (`projects`/`governance`/`kpiSettings`) to the
+  shared `projects.team_state` row provisioned in P6, optimistic-concurrency
+  conflict handling (pull + blocking alert, never silent clobber), local-first —
+  fully functional with cloud sync untouched if the CDN is blocked or nobody
+  signs in. Built on `aimo-tracker.html`, version bumped to v2.0, `CHANGELOG.md`
+  and `docs/SUPABASE.md` updated. Headless QA (CDN-blocked graceful degradation,
+  mocked-client sign-in/pull/push/conflict/sign-out) all passed. **Not deployed**
+  — `public/index.html` untouched, per `CLAUDE.md`'s separate build/ship
+  approval rule.
 
 ## ✅ Shipped
 - **P6 — Consolidated Supabase into AIMO-SMS-Tracker** (01 Aug 2026). After P4 (D1
