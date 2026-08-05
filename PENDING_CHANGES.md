@@ -6,12 +6,14 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🆕 Logged — awaiting go |
-| P12 | Audit batch 4 — schema + governance (H3, M8, M9) | 🔧 H3 done; M8/M9 still awaiting go |
-| P11 | Audit batch 3 — KPI correctness (H4, M5, M6, M7, L6, L7, L9, L10) | 🔧 H4 done; M5–M10/L6/L7/L9/L10 still awaiting go |
-| P10 | Audit batch 2 — quick correctness wins (L1, M3, L8, M10, M11) | 🆕 Logged — awaiting go |
-| P9 | Audit batch 1 — data-loss protection (C1, C2, H1, H2, M2) | 🔧 C1/C2/H1/H2 done; M2 still awaiting go |
-| P7 | Cloud sync (Supabase auth + team_state sync) — v2.0 big build | 🔧 Built, QA'd, and through multiple independent review rounds — awaiting explicit "ship it" |
+| P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Implemented + QA'd, pending review sign-off, version bump, commit |
+| P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🆕 Scope confirmed by owner — not started |
+| P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
+| P12 | Audit batch 4 — schema + governance (H3, M8, M9) | ✅ Done (H3 shipped in v2.0; M8/M9 done in Batch D) |
+| P11 | Audit batch 3 — KPI correctness (H4, M5, M6, M7, L6, L7, L9, L10) | ✅ Done (H4 shipped in v2.0; M5–M10/L6/L7/L9/L10 done in Batch D) |
+| P10 | Audit batch 2 — quick correctness wins (L1, M3, L8, M10, M11) | ✅ Done (Batch B) |
+| P9 | Audit batch 1 — data-loss protection (C1, C2, H1, H2, M2) | ✅ Done (C1/C2/H1/H2 shipped in v2.0; M2 done in Batch D) |
+| P7 | Cloud sync (Supabase auth + team_state sync) — v2.0 big build | ✅ Shipped (v2.0) |
 | P6 | Consolidate Supabase into AIMO-SMS-Tracker (`projects` schema) | ✅ Done — pausing AIMO-Projects-Tracker project |
 | P5 | Glass project cards (remove crosshairs) + Safety tab → redirect to sister app | ✅ Shipped (v1.4) |
 | P4 | D1 + Cloudflare Access trial (Supabase free-tier consolidation, Option B) | ❌ Abandoned — see P6 |
@@ -28,62 +30,121 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
-- **P9/P11/P12's Critical+High items (C1, C2, H1, H2, H3, H4) — implemented**
-  (04 Aug 2026, on the owner's explicit go for exactly this subset, shipping
-  together with P7). See `CHANGELOG.md` v2.0 for the full description of each.
-  The remaining, **not implemented**, items in each of these batches:
-  - **P9 remainder — M2**: session export can miss the last debounced edit,
-    then clears the "needs backup" flag anyway.
-  - **P11 remainder — M5, M6, M7, L6, L7, L9, L10**: reversed-date 0-day
-    turnarounds, timezone bugs in working-day math, two KPI cards computing
-    "comment closure" differently, and assorted threshold/footnote/ordering
-    drift. Touches KPI scoring — per `CLAUDE.md` this batch warrants a review
-    subagent before shipping, same as the H4 piece already done.
-  - **P12 remainder — M8, M9**: breach-flag logic disagreeing between the
-    Overview panel and the Governance view; editing an action via the modal
-    bypassing target-date audit-trail history.
-- **P10 — Batch 2, quick correctness wins.** Not started. L1: one real
-  stored-XSS gap — a hand-edited/malicious session import can plant an
-  unescaped `innerHTML` payload in the governance detail panel. M3: governance
-  action age renders "NaNd" when Date Opened is empty. L8: invalid CSS
-  silently drops a KPI sub-line's RAG color. M10/M11: stale hardcoded version
-  badge in the markup and stale version references in `CLAUDE.md`/
-  `docs/ARCHITECTURE.md`. Low risk, one-line-scale fixes.
-- **P13 — Batch 5, hardening & hygiene.** Not started. M1: cross-tab save race
-  between the main app and the `?verify=` popup can silently drop or overwrite
-  edits — **note:** P7's cloud-sync work independently had to solve a version
-  of this exact problem for its own sync-trigger listeners (see `CHANGELOG.md`
-  v2.0, `sbNoteExternalStorageChange`); worth checking whether that same
-  mechanism/pattern also closes M1's plain-localStorage race, or at least
-  informs the fix, before treating M1 as unstarted work. M4: a couple of
-  handlers write the full projects array (incl. base64 photos) to localStorage
-  on every keystroke instead of debouncing. M12: the known loose end that
-  production deploys from this working branch, no `main` yet (needs owner
-  approval per the hard rule — already tracked elsewhere too). L2/L3:
-  `/api/feedback` has no auth/rate-limiting and parses the body before size
-  validation. L4: timestamp-only IDs (no random suffix) can collide.
-  L5/L11/L13: quota-alert-only-fires-once, inconsistent overdue-date semantics
-  across views, ~510 lines of dead `buildSafety*` code kept since the v1.4
-  Safety-tab redirect.
-- **P7 — Cloud sync (Supabase)**, the "big build" requested to bring
-  AIMO Tracker's header/sync UX in line with the Safety Tracker sibling. Email +
-  password sign-in, whole-blob sync (`projects`/`governance`/`kpiSettings`) to the
-  shared `projects.team_state` row provisioned in P6, optimistic-concurrency
-  conflict handling (pull + blocking alert, never silent clobber), local-first —
-  fully functional with cloud sync untouched if the CDN is blocked or nobody
-  signs in. The `?verify=` pop-out doesn't run its own cloud-sync client
-  (removed after a review found per-window state didn't compose safely across
-  two windows sharing one `localStorage`); its edits still reach the cloud via
-  the main window's existing pickup listeners. Built on `aimo-tracker.html`,
-  version bumped to v2.0, `CHANGELOG.md` and `docs/SUPABASE.md` updated. Went
-  through multiple independent review rounds that each found and led to fixing
-  real concurrency/data-loss issues — see `CHANGELOG.md` v2.0 for the summary.
-  Headless QA throughout (CDN-blocked graceful degradation, mocked-client
-  sign-in/pull/push/conflict/sign-out, plus a dedicated test per fix) all
-  passed. **Not deployed** — `public/index.html` untouched, per `CLAUDE.md`'s
-  separate build/ship approval rule.
+- **P14 — Retire local-only usage** (owner feedback via the in-app Feedback
+  button, 04 Aug 2026: *"Change the login screen to be like this. Remove the
+  prompt for session upload or download. Just load this screen and the user
+  should login first before seeing any information."* + confirmed explicitly:
+  *"local-only usage doesn't exist anymore — hence we are tied to cloudflare
+  and supabase."*). This reverses P7's original "local-first, cloud sync
+  optional" design: sign-in becomes mandatory before any project data is
+  shown. Scope, as interpreted (owner's exact screenshot wasn't viewable by
+  the agent — Notion's API didn't expose the attached file — confirm/correct
+  once seen live):
+  - App boot now shows a full-screen sign-in gate before rendering any project
+    data — no more "browse local-only, sign in later" path.
+  - The Session modal no longer auto-opens on boot (that was the local-first
+    backup/restore entry point); the Session import/export feature itself
+    stays available post-login, via the header button, as a manual
+    backup/transfer tool — not removed outright, since it's still useful and
+    the cloud-sync recovery-backup keys (`aimo_pre_pull_backup` etc.) build on
+    the same underlying idea.
+  - If Supabase/the CDN is unreachable, the app now shows a clear blocking
+    "can't connect" state instead of silently degrading to local-only, since
+    that fallback no longer exists.
+- **P15 — Batch A/B/D from the audit + feedback review** (05 Aug 2026, on the
+  owner's explicit "go ahead"). Batch A (housekeeping): fixed this doc's stale
+  P7 "not deployed" status (below, now ✅ Shipped); investigated the
+  empty-`Comment`-field anomaly on two old Notion feedback rows — reproduced
+  the Worker's exact code path twice via direct submissions and `Comment`
+  populated correctly both times, so concluded it was a transient artifact of
+  the same outage window the env-vars issue caused, not a code bug — nothing
+  to fix there; updated old feedback rows' Notion `Status` to reflect what's
+  actually shipped; archived (`Status: Rejected`) the diagnostic test rows
+  left over from verifying the feedback endpoint (no Notion delete/archive
+  tool is available, so this is the closest equivalent). Batch B (P10) and
+  Batch D (P9/P11/P12 remainders + P13) — see the consolidated entry below.
+- **P9/P11/P12/P10/P13 — all remaining audit items implemented and QA'd**
+  (05 Aug 2026, Batch A/B/D, on the owner's explicit "go ahead"). C1, C2, H1,
+  H2, H3, H4 shipped earlier with v2.0 (see `CHANGELOG.md`); everything below
+  is newly done in this pass, built on `aimo-tracker.html` and verified with
+  headless Playwright (targeted tests per fix plus a full regression re-run of
+  the existing cloud-sync suite — zero regressions). **Not yet versioned,
+  reviewed, committed, or deployed** — see P15 above.
+  - **P9 remainder — M2**: `downloadSession()` now flushes any pending
+    debounced save before exporting, so the export can no longer miss the
+    last edit.
+  - **P11 remainder — M5, M6, M7, L6, L7, L9, L10**: `workingDaysKSA()`
+    rewritten for correct UTC date handling (was timezone-fragile) and
+    returns `null` on reversed dates instead of a bogus negative count; KPI8
+    (comment close rate) now sums from the same `stageDocs[key].docList`
+    source the document-review views use, instead of a separately-derived
+    `reviewEvents` count that could disagree with it; KPI target-display text
+    now reads the settings-aware `getKPIS()` accessor instead of hardcoded
+    `KPI_DEFAULTS`; KPI detail-view RAG colors centralized through one
+    `ragHex()` helper; KPI5 (end-to-end days) excludes partial submissions
+    consistently at both its calc and detail-render sites;
+    `deriveMilestoneDates()` now sorts the design log before taking its first
+    entry instead of assuming input order. **Touches KPI scoring** — an
+    independent review subagent (stronger model) is running against this
+    batch before it's committed, per `CLAUDE.md`'s rule; results pending.
+  - **P12 remainder — M8, M9**: the Project Overview panel's governance-breach
+    check now calls the same canonical `isDateBreached()` function the
+    Governance view uses (was a separately-inlined, narrower check); editing
+    an action's target date via the Edit Action modal now records a
+    `targetDateHistory` entry, same as every other target-date-changing path.
+  - **P10 — quick correctness wins (L1, M3, L8, M10, M11)**: escaped 3
+    previously-unescaped governance-panel fields closing a stored-XSS gap
+    reachable via a hand-edited session import; governance action age no
+    longer renders "NaNd" when Date Opened is empty (falls back to an
+    ID-embedded timestamp); fixed an invalid CSS class name that was silently
+    dropping a KPI sub-line's RAG color; the sidebar version badge is now
+    driven by `APP_VERSION` at runtime instead of a hardcoded literal that
+    could drift; `CLAUDE.md`/`docs/ARCHITECTURE.md` no longer hardcode the
+    current version number, pointing at the `APP_VERSION` constant instead.
+  - **P13 — hardening & hygiene (M1, M4, L2–L5, L11, L13)**: a new
+    `_flushPendingSave()` helper now runs before every cross-tab/cross-window
+    state reload (the `verify_updated` broadcast, the `storage` listener, the
+    `_aimo_sync` poll, and `window.aimoRefresh`), closing the race where an
+    incoming external update could silently clobber a local unsaved edit —
+    same problem P7's `sbNoteExternalStorageChange` solved for cloud sync,
+    now closed for the plain-localStorage path too; two handlers that wrote
+    the full projects array (incl. base64 photos) to localStorage on every
+    keystroke now debounce instead; ID generation (12 call sites) now appends
+    a random suffix to the timestamp to prevent collisions; a failed
+    localStorage write (quota exceeded) now shows a persistent visible
+    indicator (`#sessionDirtyDot`) in addition to the existing one-time
+    alert, and clears itself on the next successful write; `/api/feedback`
+    now rejects wrong-content-type and oversized requests before parsing the
+    body, instead of after; deleted ~506 lines of dead `buildSafety*` code
+    (and 4 orphaned helpers) left over from the v1.4 Safety-tab redirect —
+    confirmed via grep that nothing else references them.
+    - **M12 explicitly excluded** — production deploying from this working
+      branch instead of `main` is a separate infra decision needing its own
+      owner approval, tracked here and in `CLAUDE.md`'s deployment notes.
+    - **Follow-up spotted, not yet actioned**: while confirming the deleted
+      `buildSafety*` functions had no other callers, the MOC CRUD functions
+      (`addMoc`, `saveMocField`, `saveMocStatus`, etc.) and their state vars
+      (`stSafetyMocId`, `mocSectionCollapsed`) also appear to have zero live
+      UI callers left, post the v1.4 Safety-tab redirect. Left in place —
+      out of L13's specific scope — flagging here for a future cleanup pass
+      if confirmed dead.
 
 ## ✅ Shipped
+- **P7 — Cloud sync (Supabase)** (v2.0, 04 Aug 2026), the "big build" requested
+  to bring AIMO Tracker's header/sync UX in line with the Safety Tracker
+  sibling. Email + password sign-in, whole-blob sync
+  (`projects`/`governance`/`kpiSettings`) to the shared `projects.team_state`
+  row provisioned in P6, optimistic-concurrency conflict handling (pull +
+  blocking alert, never silent clobber). The `?verify=` pop-out doesn't run
+  its own cloud-sync client (removed after a review found per-window state
+  didn't compose safely across two windows sharing one `localStorage`); its
+  edits still reach the cloud via the main window's existing pickup listeners.
+  Went through multiple independent review rounds that each found and led to
+  fixing real concurrency/data-loss issues — see `CHANGELOG.md` v2.0 for the
+  summary. Headless QA throughout. Shipped to
+  https://aimo-projects-tracker.ideandaai.workers.dev on the owner's explicit
+  "deploy the updated app". At this point local-only usage is retired — see
+  P14 below.
 - **P6 — Consolidated Supabase into AIMO-SMS-Tracker** (01 Aug 2026). After P4 (D1
   trial) hit a real blocker — Cloudflare Access can't path-scope protection on a
   bare `workers.dev` domain, only whole-Worker — and given the same real people use

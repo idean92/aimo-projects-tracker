@@ -66,9 +66,9 @@ owner in conversation. The same discipline applies either way:
 1. Consolidate a request into `PENDING_CHANGES.md` as a new item (short
    root-cause/approach note) — do not touch `aimo-tracker.html` yet.
 2. Build only on an explicit go ("go", "build it", "start", "implement").
-3. Once implemented and QA'd, bump `APP_VERSION` / `APP_DATE` (top of the file,
-   currently `v1.0` / 07 Jul 2026) and add a `CHANGELOG.md` entry — it still isn't
-   shipped/handed over until a separate, explicit "ship it".
+3. Once implemented and QA'd, bump `APP_VERSION` / `APP_DATE` (see `const APP_VERSION`
+   near the top of `aimo-tracker.html` for the current value) and add a `CHANGELOG.md`
+   entry — it still isn't shipped/handed over until a separate, explicit "ship it".
 4. Update `PENDING_CHANGES.md` to mark the item shipped, as part of the same change.
 
 ## Code review before deploying

@@ -25,6 +25,16 @@ async function handleFeedback(request, env) {
     return json({ error: 'Feedback service is not configured yet' }, 503);
   }
 
+  // L3: reject oversized/wrong-typed bodies before buffering and parsing them, not after.
+  const contentType = request.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return json({ error: 'Content-Type must be application/json' }, 415);
+  }
+  const contentLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_SCREENSHOT_BYTES * 1.5) {
+    return json({ error: 'Request too large' }, 413);
+  }
+
   let body;
   try {
     body = await request.json();

@@ -39,9 +39,10 @@ is later synced with that local folder.
   first-submission completeness, avg review cycles, **KREI score** (KPI #4, "/100",
   tied to design-review performance), end-to-end days, GACA acceptance rate, RAC
   review working days, comment close rate, and C/D major finding ratio.
-- Versioning already exists in-code: `const APP_VERSION = 'v1.0'` and
-  `const APP_DATE = '07 Jul 2026'` (~line 2191), shown in the sidebar version badge
-  (`#appVersionBadge`). There is currently no `CHANGELOG` array driving an in-app
+- Versioning already exists in-code: `const APP_VERSION` and `const APP_DATE` near the
+  top of `aimo-tracker.html` (see `CHANGELOG.md` for the current value — don't hardcode
+  it here, it drifts), shown in the sidebar version badge (`#appVersionBadge`). There
+  is currently no `CHANGELOG` array driving an in-app
   "what's new" prompt (unlike the Safety Tracker sibling) — `CHANGELOG.md` in this
   repo is the changelog of record for now.
 - `CRS_STAGES` (CRS revision-history tracking on submission stages) is currently an
