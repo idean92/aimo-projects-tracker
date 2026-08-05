@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P16 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | 📋 Consolidated, design agreed with owner — awaiting explicit go to build |
+| P16 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | 🔧 **Phase 1 (registry + roster sync) built & QA'd, version bumped (v4.0)** — awaiting independent review + explicit "ship it". Phase 2 (hierarchy nesting + KPI/report split) not started |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |

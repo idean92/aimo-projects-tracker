@@ -2261,8 +2261,8 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v3.0';
-const APP_DATE     = '05 Aug 2026';
+const APP_VERSION  = 'v4.0';
+const APP_DATE     = '06 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
 // Relative path so this works same-origin once the Cloudflare Worker (see
@@ -2635,6 +2635,10 @@ function sbResetSessionState() {
   sbPulled = false;
   sbDirty = false;
   sbNeedsRetryPush = false;
+  // P16: a shadow left by the previous account/session would make the next reconcile
+  // mis-read "changed remotely" as "changed locally" and publish the wrong side.
+  try { localStorage.removeItem(REG_SHADOW_KEY); } catch (e) {}
+  _regLastRun = 0;
   _sbLastSyncedSnapshot = null; // stale from the previous session — harmless today (the next sign-in's pull always has sbLastPulledAt===null so it always applies and rewrites this), but keep the "resets everything" contract honest
   // Bump the session generation so a push/pull already in flight from before this reset (its
   // network request can't be cancelled) recognizes on completion that it no longer belongs to
@@ -2738,6 +2742,7 @@ async function sbPushNow() {
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      regReconcileSoon();   // P16: publish roster edits (create/rename/delete) outward
     } else {
       // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
       const { data, error } = await sbTable()
@@ -2766,6 +2771,7 @@ async function sbPushNow() {
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      regReconcileSoon();   // P16: publish roster edits (create/rename/delete) outward
     }
   } catch (err) {
     if (sbSessionGen === mySessionGen) setSyncStatus('error', 'Sync error — your local save is safe, but it hasn\'t reached the cloud yet.');
@@ -2847,6 +2853,7 @@ async function sbPullNow(force) {
       setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
     }
     if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight (or survived a skip-apply above) — flush it now that we have a baseline
+    regReconcileSoon(true);        // P16: pick up roster changes made in the Safety Tracker
     return true;
   } catch (err) {
     if (sbSessionGen === mySessionGen) {
@@ -2857,6 +2864,149 @@ async function sbPullNow(force) {
     // untouched since sbLastPulledAt is still a valid CAS token.
     return false;
   }
+}
+
+/* ══════════════════════════════════════════════════
+   PROJECT REGISTRY — cross-tracker roster sync (P16, phase 1)
+══════════════════════════════════════════════════
+   Mirrors ONLY the project ROSTER — id, name, program, parent, archived — through
+   public.project_registry, so a project created in either tracker turns up in the other.
+   Syncs none of the payload: stageDocs, milestones, KPIs, doc registers and observations
+   all stay app-owned. Ops/engineering observations live here, safety observations stay in
+   the Safety Tracker (owner decision, P16).
+
+   The Safety Tracker is master of the hierarchy — it derives `program` and `parent_id`
+   from its MOC data and publishes them. This app consumes both, so it never needs to know
+   what a MOC is. `parentProjectId` is stored on the project record but not yet rendered:
+   the three-level program -> project -> sub-project nesting is phase 2.
+
+   Registry failures are non-fatal by design and never touch projects.team_state — the
+   registry is a convenience mirror, team_state is the system of record. */
+const REG_TABLE  = 'project_registry';
+// Local-only, deliberately NOT synced: records what THIS browser last saw in the registry,
+// which is what lets the three-way merge tell "renamed remotely" from "renamed locally".
+const REG_SHADOW_KEY = 'aimo_registry_shadow';
+let _regRunning = false, _regLastRun = 0;
+const REG_THROTTLE_MS = 2000;
+
+function _regNorm(r) { return { name: r.name, program: r.program || null, parentId: r.parent_id || null }; }
+function _regSame(a, b) { return !!a && !!b && a.name === b.name && a.program === b.program && a.parentId === b.parentId; }
+
+async function regReconcile(force) {
+  if (!sbClient || !sbUser) return false;
+  // Never reconcile before the first successful pull. Local data may still be empty or stale
+  // at that point, and the deletion pass below infers "deleted here" from a project being
+  // absent locally — which would archive the entire roster on a cold start.
+  if (!sbPulled) return false;
+  if (_regRunning) return false;
+  if (!force && Date.now() - _regLastRun < REG_THROTTLE_MS) return false;
+  _regRunning = true;
+  try {
+    const { data: rows, error } = await sbClient.from(REG_TABLE)
+      .select('id,name,program,parent_id,archived,origin_app');
+    if (error) { console.warn('[registry] pull failed', error); return false; }
+
+    const projects = lsGet(STORAGE_KEY, []);
+    if (!Array.isArray(projects)) return false;
+    const shadow = lsGet(REG_SHADOW_KEY, {}) || {};
+    const byId   = new Map(projects.map(p => [p.id, p]));
+    const remote = new Map((rows || []).map(r => [r.id, r]));
+    const upserts = [], nextShadow = {};
+    let localChanged = false;
+    const nowISO = new Date().toISOString();
+
+    const queue = (id, v, archived, originApp) => upserts.push({
+      id, name: v.name, program: v.program, parent_id: v.parentId,
+      archived: !!archived, origin_app: originApp || 'projects',
+    });
+
+    // ── local <-> registry ──
+    projects.forEach(p => {
+      if (!p || !p.id) return;
+      const d = { name: String(p.name || '').trim(), program: p.parentGroup || null, parentId: p.parentProjectId || null };
+      const r = remote.get(p.id);
+      if (!r) { queue(p.id, d, false); nextShadow[p.id] = d; return; }   // created here
+      if (r.archived) return;                                            // the archive pass owns this
+      const rn = _regNorm(r), s = shadow[p.id];
+      if (_regSame(d, rn)) { nextShadow[p.id] = d; return; }             // already agree
+      const movedLocal  = !s || !_regSame(d, s);
+      const movedRemote = !s || !_regSame(rn, s);
+      if (movedRemote) {
+        // Adopt. This covers the remote-only change AND the both-sides conflict, because the
+        // Safety Tracker is master. It also covers the very first run (no shadow), which is
+        // what makes that first reconcile one-way Safety -> Projects — this app's row is a
+        // stale 21 Jul snapshot, so a symmetric merge would push its older names back over
+        // the current ones.
+        if (rn.name && p.name !== rn.name) { p.name = rn.name; localChanged = true; }
+        if ((p.parentGroup || null) !== rn.program) { p.parentGroup = rn.program; localChanged = true; }
+        if ((p.parentProjectId || null) !== rn.parentId) { p.parentProjectId = rn.parentId; localChanged = true; }
+        if (localChanged) p.updatedAt = nowISO;
+        nextShadow[p.id] = rn;
+      } else if (movedLocal) {
+        queue(p.id, d, false, r.origin_app);                             // renamed here
+        nextShadow[p.id] = d;
+      } else { nextShadow[p.id] = s; }
+    });
+
+    // ── deleted here -> archive in the registry ──
+    // Guarded on a non-empty local array: an empty one means "not loaded yet", not "the user
+    // deleted everything". This app has no tombstones of its own, so shadow-absence is the
+    // only deletion signal available and it has to be read conservatively.
+    if (projects.length) {
+      Object.keys(shadow).forEach(id => {
+        if (byId.has(id)) return;
+        const r = remote.get(id);
+        if (r && !r.archived) queue(id, _regNorm(r), true, r.origin_app);
+      });
+    }
+
+    // ── archived in the registry -> remove here ──
+    (rows || []).forEach(r => {
+      if (!r.archived || !byId.has(r.id)) return;
+      const i = projects.findIndex(p => p.id === r.id);
+      if (i >= 0) { projects.splice(i, 1); localChanged = true; }
+      nextShadow[r.id] = _regNorm(r);
+    });
+
+    // ── in the registry but not here -> create a stub ──
+    (rows || []).forEach(r => {
+      if (r.archived || byId.has(r.id)) return;
+      projects.unshift({
+        id: r.id, name: r.name, parentGroup: r.program || null, parentProjectId: r.parent_id || null,
+        category: '', description: '', notes: '', contractor: '', gacaRef: '', packageRef: '',
+        createdAt: nowISO, updatedAt: nowISO, milestones: {}, stageDocs: {}, scope: [],
+      });
+      localChanged = true;
+      nextShadow[r.id] = _regNorm(r);
+    });
+
+    if (localChanged) lsSet(STORAGE_KEY, projects);   // lsSet schedules the team_state push itself
+    if (upserts.length) {
+      const { error: upErr } = await sbClient.from(REG_TABLE).upsert(upserts, { onConflict: 'id' });
+      // Leave the shadow untouched on a failed publish so the next run retries rather than
+      // recording changes that never landed. A Safety-Tracker viewer signing in here is the
+      // expected case: RLS rejects the write, and roster sync degrades to read-only.
+      if (upErr) { console.warn('[registry] push failed', upErr); return localChanged; }
+    }
+    lsSet(REG_SHADOW_KEY, nextShadow);
+    _regLastRun = Date.now();
+    return localChanged;
+  } catch (err) {
+    console.warn('[registry] reconcile error', err);
+    return false;
+  } finally { _regRunning = false; }
+}
+
+// Fire-and-forget wrapper — kept off the sync critical path so a registry failure can never
+// break team_state sync. Only re-renders when the reconcile actually changed something.
+function regReconcileSoon(force) {
+  regReconcile(force).then(changed => {
+    if (!changed) return;
+    loadProjects();
+    state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
+    if (state.selectedId) renderProjectDetail();
+    renderSidebar();
+  }).catch(e => console.warn('[registry] reconcile failed', e));
 }
 
 function initCloudSync() {

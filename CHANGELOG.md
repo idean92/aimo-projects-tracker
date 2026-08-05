@@ -3,6 +3,49 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v4.0 — 06 Aug 2026
+- **New: cross-tracker project registry — phase 1 of 2** (P16 here; **P36** in
+  the `aimo-safety-tracker` repo — the two ship together). Owner request,
+  05 Aug 2026: *"the existing projects in safety tracker should also be
+  reflected in the projects tracker … when a project is created it should also
+  reflect in the other tracker."* Major bump — adds a second cloud data source,
+  a new field on the project record, and lets projects this app didn't create
+  appear in it. **Not deployed** — `public/index.html` untouched, awaiting an
+  explicit "ship it", and an independent review is still outstanding per
+  `CLAUDE.md` (major bump + KPI-adjacent hierarchy + Supabase writes).
+  - A new `public.project_registry` table mirrors the project *roster only* —
+    id, name, program, parent, archived — between the two trackers. Create a
+    project in either app and it appears in the other; renames and deletions
+    propagate both ways.
+  - **Nothing else is synced.** No `stageDocs`, `milestones`, KPIs, doc
+    registers or observations cross over. Ops/engineering observations stay
+    here, safety observations stay in the Safety Tracker (owner decision). This
+    keeps phase 1 entirely clear of the `stageDocs` data-loss gotcha in
+    `docs/ARCHITECTURE.md`.
+  - **New `regReconcile()` / `regReconcileSoon()`**, hooked into the existing
+    `sbPullNow()` / `sbPushNow()` cycle rather than replacing any of it.
+  - **The Safety Tracker is master of the hierarchy.** It derives `program` and
+    `parent_id` from its MOC data and publishes them; this app consumes both and
+    so never needs to know what a MOC is. `parentProjectId` is now stored on the
+    project record but **not yet rendered** — the three-level program → project →
+    sub-project nesting, and the KPI/report split that goes with it, is phase 2.
+  - **The first reconcile is deliberately one-way (Safety → Projects).** This
+    app's cloud row was a frozen 21 Jul snapshot holding 8 of the 16 projects
+    with two drifted names; a symmetric merge would have pushed those older
+    names back over the current ones. With no shadow recorded yet, the merge
+    always adopts the registry, which is what makes that first run safe.
+  - **Cold-start guards.** `regReconcile()` refuses to run before the first
+    successful pull, and the "deleted here" pass is skipped entirely when the
+    local project array is empty — this app has no tombstones of its own, so
+    absence is the only deletion signal available and an unloaded array must
+    never be read as "the user deleted everything."
+  - `aimo_registry_shadow` (local-only, never synced) records what this browser
+    last saw, so a rename here can be told apart from a rename there. Cleared in
+    `sbResetSessionState()` so it can't leak across accounts.
+  - 43 logic tests across both apps' reconcilers — first-run convergence, both
+    rename directions, both delete directions, resurrection, cycle guard, viewer
+    read-only, cold-start guards — all passing.
+
 ## v3.0 — 05 Aug 2026
 - **New: mandatory sign-in gate — local-only usage is retired** (owner
   feedback: *"Change the login screen to be like this. Remove the prompt
