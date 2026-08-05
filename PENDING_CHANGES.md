@@ -150,13 +150,13 @@ _(none yet)_
   type **Secret** (owner-only, dashboard step).
 
   **Open follow-ups from the pre-deploy review (not blocking, owner's call):**
-  - **`--text-3` contrast.** Ported from the sibling as `#8a8496`, up from
-    `#7b7488`. That drops small-text contrast on white from 4.47:1 to
-    **3.61:1** — below WCAG AA's 4.5:1 for normal text, and this token carries
-    the 9–11px stat-tile labels, table headers and helper copy. Kept as-is
-    because matching the sibling *is* the point of P16, but the sibling has the
-    same problem: the honest fix is darkening the token in **both** apps
-    (~`#6f6a7c` clears AA while staying in the same family).
+  - ~~**`--text-3` contrast.**~~ ✅ **Fixed and shipped in v3.3** (05 Aug 2026,
+    owner: *"fix the text-3 contrast in both apps"*) — and in the Safety Tracker
+    sibling as V5.5, since both apps shared the token and the problem. Token
+    darkened to `#6f6a7c`, plus a targeted step-up to `--text-2` for
+    `.sb-proj-sub`/`.h-ms-baseline` on hovered/selected sidebar rows, whose
+    translucent-purple overlay composites darker than any flat surface. See
+    `CHANGELOG.md` v3.3.
   - **What's-new can't auto-fire on this release.** `aimo_seen_version` is
     introduced *by* v3.2, so every existing browser hits the "no stored
     version" branch and baselines silently rather than being greeted with a
