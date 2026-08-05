@@ -88,7 +88,26 @@ create table public.project_registry (
   updated_by  uuid references auth.users(id)
 );
 ```
-Migrations: `create_project_registry`, `project_registry_revoke_truncate`.
+Migrations: `create_project_registry`, `project_registry_revoke_truncate`,
+`project_registry_harden_id_and_audit`, `projects_team_state_viewer_restrictions`.
+
+**Added by the pre-deploy review (06 Aug 2026):**
+- `check (id ~ '^[A-Za-z0-9_-]{1,64}$')` — a registry id becomes a *local project id* in
+  both apps, and project ids are interpolated into `onclick`/`id`/`<option>` attributes.
+  Without this, one INSERT was stored XSS in both apps. Both clients also reject
+  malformed ids on ingest; this is the server-side backstop, not the only line.
+- `check` length caps on `name` / `program`.
+- `updated_by` is now stamped **server-side** from `auth.uid()` in the BEFORE
+  INSERT-OR-UPDATE trigger. It was declared but never populated by either client, so
+  every row was unattributable; setting it server-side also means a client can't forge it.
+- **`projects.team_state` gained viewer-cannot-write policies.** It previously had
+  `using (true)` / `with check (true)` for every authenticated user, and AIMO Tracker has
+  no viewer concept in its UI — so an account marked read-only for safety data could
+  rewrite the shared roster here, and the next editor's reconcile would publish that to
+  the registry, deleting the matching Safety Tracker projects. ⚠️ This policy change is
+  **live immediately**, independent of any app deploy: accounts with
+  `app_metadata.role = 'viewer'` can no longer write to `projects.team_state`. Editors are
+  unaffected (the predicate defaults to `editor` when the claim is absent).
 
 Deliberate choices, each with a reason:
 - **It lives in `public`, not a new `shared` schema.** A new schema would need the same

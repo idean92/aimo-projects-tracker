@@ -3,6 +3,87 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v4.2 — 06 Aug 2026
+- **Pre-deploy review fixes for P16** (three independent Opus reviewers — sync/
+  data-loss, hierarchy/KPI, and security — run on the owner's instruction before
+  deploying v4.0/v4.1). 22 findings; all fixed. Ships with v4.0 and v4.1 as one
+  feature. **Still not deployed** — `public/index.html` untouched.
+
+  **Critical**
+  - **Stored XSS via registry-supplied project ids.** Project ids are
+    interpolated into `onclick`/`id`/`<option>` attributes throughout this file.
+    That was inert while ids were only ever generated locally — v4.0 made them
+    remote, cross-app, attacker-controllable input and left every sink
+    unescaped. A single row inserted by any signed-in non-viewer would have run
+    script in every other user's session, in **both** apps, on render with no
+    click, with the Supabase session token in reach. Fixed three ways: all 7
+    sinks now use `esc()`, malformed ids are rejected on ingest
+    (`/^[A-Za-z0-9_-]{1,64}$/`), and a matching `CHECK` constraint was added
+    server-side (migration `project_registry_harden_id_and_audit`). Names were
+    already escaped everywhere — it was the id that was missed.
+  - **Deletion by shadow-absence replaced with real tombstones.** v4.0 inferred
+    "the user deleted this" from a project being in the local shadow but not the
+    local array. The shadow is written synchronously while the matching state
+    only reaches the cloud via an 800ms debounced push, so a CAS-conflict pull, a
+    closed tab, a quota failure or a **session import** made the shadow claim a
+    project the array lacked — read as a deletion, which propagated to the Safety
+    Tracker as an *irreversible* tombstone destroying that project's hazards,
+    findings, MOC records and verification logs for the whole team. Deletion is
+    now an explicit `aimo_deleted_projects` map written **only** by
+    `deleteProject()`, synced with the rest of the payload and carried through
+    session export/import. A session import also clears the registry shadow, so
+    the roster it brings is adopted rather than read as a mass change.
+  - **`familyMilestones()` discarded actual-only milestones.** It required
+    `planned || baseline` for a milestone to count as expected — but
+    `deriveMilestoneDates()` auto-derives `actual` for 7 of the 10 milestones and
+    never writes planned/baseline for them, so on the most common data shape a
+    family reported **0%** and its markers dropped out of the Gantt entirely,
+    with the report announcing "Next: Design Review" for a project in
+    construction. An actual now counts as its own evidence.
+
+  **High**
+  - Per-field three-way merge replaces the per-record one, so adopting a remote
+    name no longer records the remote program/parent as "agreed" and republishes
+    them a cycle later.
+  - `topLevelProjects()` now resolves the true root by walking the parent chain.
+    It previously excluded any project with a `parentProjectId` — so an orphan
+    (parent archived via the registry) and a grandchild were both dropped from
+    the schedule and the deck while still showing in the sidebar.
+  - The reconcile now flushes a pending `debouncedSave()` before its
+    read-modify-write of localStorage. Without it a `stageDocs` edit made in the
+    600ms window was silently destroyed — exactly the hazard `CLAUDE.md` flags.
+  - **Three-level cap is now enforced.** A project that *has* sub-projects can no
+    longer be given a parent (the control is disabled, with a save-path
+    backstop) — that path silently built 3-deep chains whose grandchild vanished
+    from all reporting.
+  - **Sub-project observations, hazards and comment-closure now sum into the
+    parent's row** in the executive report (owner's call). Folding was only ever
+    meant to apply to milestone bars; the risk data was disappearing from the
+    deck entirely, understating portfolio open-observation totals.
+
+  **Medium / low**
+  - Folded completion forecasts now take the **latest** across the family
+    (owner's call) — taking the earliest reported a family finishing Dec 2026
+    when its addendum ran to Jun 2027.
+  - A throttled reconcile is retried instead of dropped; the throttle clock also
+    advances on failure, so a failing registry can't cause a request storm.
+  - Program headers can no longer be emitted twice by the cycle-leftover pass.
+  - `updatedAt` is stamped per project rather than off a shared accumulator.
+  - `orderByHierarchy` keys on the object, so two records sharing an id both
+    still render.
+  - Archiving a project now promotes its children rather than leaving a dangling
+    `parentProjectId`.
+  - `getFamilyStatus`/`getFamilyProgress` documented as intentionally unused.
+  - **Supabase:** `updated_by` is now stamped server-side from `auth.uid()`
+    (it was declared but never populated, so every row was unattributable), and
+    **`projects.team_state` gained viewer-cannot-write policies** (migration
+    `projects_team_state_viewer_restrictions`). It had none, and this app has no
+    viewer concept, so a read-only account could rewrite the shared roster — which
+    an editor's next reconcile would then publish, deleting Safety Tracker data.
+    ⚠️ That RLS change is **live immediately**, independent of this deploy.
+  - 92 logic tests across both apps (up from 69), including regressions for every
+    critical and high finding above.
+
 ## v4.1 — 06 Aug 2026
 - **New: three-level project hierarchy — P16 phase 2** (ships together with v4.0
   below; the two are one feature split across two approvals). Mirrors the Safety
