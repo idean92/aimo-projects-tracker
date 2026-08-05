@@ -175,6 +175,33 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
   - 43 logic tests across both apps' reconcilers — first-run convergence, both
     rename directions, both delete directions, resurrection, cycle guard, viewer
     read-only, cold-start guards — all passing.
+## v3.3 — 05 Aug 2026
+- **Fixed: `--text-3` small text failed WCAG AA contrast** (owner request:
+  *"fix the text-3 contrast in both apps"*, following the v3.2 pre-deploy
+  review). The same fix landed in the Safety Tracker sibling — the two apps
+  share this token and both had the problem.
+  - `--text-3` `#8a8496` → **`#6f6a7c`**. The old value measured **3.19:1** on
+    `--bg-elevated` and 3.61:1 on white, against AA's 4.5:1 for normal text —
+    and this token carries the 9–11px stat-tile labels, table headers and
+    helper copy. The new value clears AA on every flat surface: 5.21:1 on
+    `--bg-card`, 4.91:1 on `--bg-sidebar`, 4.70:1 on `--bg-base`, 4.60:1 on
+    `--bg-elevated`.
+  - **Hovered/selected sidebar rows needed a second fix.** `--bg-hover` and
+    `--bg-active` are translucent purple (`rgba(111,50,138,.08/.14)`), so those
+    rows composite to a *darker* surface than any flat background — 4.32:1 and
+    3.91:1 even with the new token. Lightening the overlay doesn't rescue it
+    (still 4.46:1 at `.06`, by which point the selection is barely visible),
+    and darkening `--text-3` far enough would have collapsed it into
+    `--text-2`. Instead `.sb-proj-sub` / `.h-ms-baseline` step up to
+    `--text-2` in those two states only — 5.95:1 and 5.39:1 — leaving the
+    text-2/text-3 hierarchy intact everywhere else.
+  - Verified in-browser rather than on paper: measured computed colour against
+    the *composited* background (an early probe read the translucent selection
+    layer as opaque and reported a false 1.61:1). All sampled selectors across
+    both apps now measure ≥4.5:1.
+  - No layout, markup or behaviour change — two CSS declarations and one new
+    rule per app.
+
 ## v3.2 — 05 Aug 2026
 - **"What's new", guided tour, and a Settings modal — P16 Phase 4, items 1–3**
   (owner-approved: *"Proceed with 1,2 and 3"*). Three independent UX features
