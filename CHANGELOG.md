@@ -72,12 +72,14 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
   - **Phase 3 — section cards.** Added the sibling's `_p8()` section-card
     component (white card, tinted header strip with violet accent bar,
     optional count pill and header actions, optional collapse) and wrapped the
-    inner-page sections with it: KPI detail, Document Register/Documents, PSQS
-    Document Registry, Design Package Review Cycles, PRC Overview and Comment
-    Status, CRS Revision History, Delay Analytics, Risk Assessment, Risk
-    Verification (+ History), Safety/Operations/Engineering Observations, All
-    Observations, Construction Schedule, Submission Milestones, GACA Acceptance
-    Cycle, Comments by Document, and Task Schedule.
+    inner-page sections with it: Document Register/Documents, PSQS Document
+    Registry, Design Package Review Cycles, PRC Overview and Comment Status,
+    Risk Assessment, Risk Verification (+ History), Safety/Operations/
+    Engineering Observations, All Observations, Construction Schedule,
+    Submission Milestones, GACA Acceptance Cycle, Comments by Document, and
+    Task Schedule. (Also CRS Revision History and Delay Analytics, though both
+    are gated on `CRS_STAGES`, currently empty, so neither renders today. KPI
+    detail panes are *not* wrapped — they render via `tableWrap`.)
   - Redundant `border-top` separators between those sections were removed —
     each section is now a self-contained card — and the Document Register card
     is skipped entirely when its summary strip is empty (previously it would

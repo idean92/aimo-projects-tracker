@@ -3165,6 +3165,12 @@ function _gateLock(locked) {
 }
 function _agShowState(s, detail) {
   const gate = document.getElementById('authGate');
+  // P16 (pre-deploy review): the tour's blocker/ring/bubble sit at z-index 20000+,
+  // above this gate — so a session dropping mid-tour (failed refresh, SIGNED_OUT)
+  // used to re-show the sign-in form underneath a live, click-swallowing blocker.
+  // Tear both post-reveal surfaces down whenever the gate comes back.
+  try{ _tourEnd(); }catch(e){}
+  try{ const _wn=document.getElementById('wnOverlay'); if(_wn) _wn.remove(); }catch(e){}
   if (gate) gate.classList.remove('hidden');
   _gateLock(true);
   const loading = document.getElementById('agLoading');
@@ -3563,6 +3569,15 @@ function _tourRenderStep(){
         </div>
       </div>`;
     document.body.appendChild(bubble);
+    // P16 (pre-deploy review): bh above is a 170px estimate; a step with a Back
+    // button and a 3-line body measures ~187px and hung ~5px off the bottom of
+    // the viewport. Re-place once with the real height now that it's in the DOM.
+    const realH=bubble.offsetHeight;
+    if(realH && Math.abs(realH-bh)>2){
+      const pos2=_tourPlacement(rect,bw,realH);
+      bubble.className='tour-bubble pt-'+pos2.placement;
+      bubble.style.top=pos2.top+'px'; bubble.style.left=pos2.left+'px';
+    }
     bubble.querySelector('.tour-btn.primary').focus();
   });
 }
@@ -4650,7 +4665,8 @@ function buildKPIDetailHTML(num, p, k) {
     return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:${bg};color:${c};">${RAG_LABEL[r]}</span>`;
   };
 
-  // P16: every KPI-detail section is a section card. Callers pass plain titles.
+  // Unused (pre-dates P16 and had no callers then either) — kept only so a future
+  // KPI-detail section has a ready wrapper. KPI detail panes render via tableWrap.
   const section = (title, html) => _p8(title, html);
 
   // ── KPI 1: PSQS ───────────────────────────────────────────────────────────
@@ -7812,7 +7828,11 @@ function addObs(stageKey, team='safety') {
   setTimeout(() => {
     const panel = document.getElementById(`exec-${subTab}-panel`);
     if (panel) {
-      const obsSection = panel.querySelector('[id^="obs-row-"]')?.closest('table') || panel.querySelector('.sec-label');
+      // P16 (pre-deploy review): buildSimpleObsTable's rows carry no id="obs-row-…"
+      // (only the safety table does), so the Operations/Engineering panels relied on
+      // the .sec-label fallback — which the section-card rewrite replaced with .p8hd.
+      // Match either, or this silently stops scrolling the new row into view.
+      const obsSection = panel.querySelector('[id^="obs-row-"]')?.closest('table') || panel.querySelector('.p8hd, .sec-label');
       if (obsSection) obsSection.scrollIntoView({ behavior:'smooth', block:'nearest' });
     }
   }, 50);
@@ -11560,6 +11580,10 @@ document.addEventListener('keydown',e=>{
     else if(!document.getElementById('kpiDetailOverlay').classList.contains('hidden')) closeKPIDetail();
     else if(!document.getElementById('crsOverlay').classList.contains('hidden')) closeCrsImport();
     else if(!document.getElementById('addEditOverlay').classList.contains('hidden')) closeAddModal();
+    // P16 (pre-deploy review): the two new surfaces closed on backdrop click and
+    // their own buttons but not on Escape, unlike every other modal here.
+    else if(document.getElementById('wnOverlay')) closeWhatsNew();
+    else if(!document.getElementById('settingsOverlay').classList.contains('hidden')) closeSettingsModal();
   }
 });
 const dz=document.getElementById('crsDropzone');
