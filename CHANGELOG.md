@@ -3,6 +3,59 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v3.0 — 05 Aug 2026
+- **New: mandatory sign-in gate — local-only usage is retired** (owner
+  feedback: *"Change the login screen to be like this. Remove the prompt
+  for session upload or download. Just load this screen and the user
+  should login first before seeing any information."*, confirmed:
+  *"local-only usage doesn't exist anymore — hence we are tied to
+  cloudflare and supabase."*). Major/architectural change — reverses P7's
+  original "local-first, cloud sync optional" design.
+  - A full-screen sign-in gate is now visible by default before any script
+    runs — no more "browse local-only, sign in later." Nothing is rendered
+    or seeded until a signed-in session is confirmed (existing or freshly
+    entered) and a cloud pull has been attempted. Three states: connecting,
+    a blocking "can't connect" error (no more silent fallback to local-only
+    if Supabase/the CDN is unreachable), and the sign-in form.
+  - Signing out — from this window or another tab sharing the same
+    persisted session — brings the gate back for the rest of the session,
+    not just at boot.
+  - The Session modal no longer auto-opens on boot; still reachable
+    post-login via the header button as a manual backup/transfer tool.
+  - The verify (`?verify=`) pop-out explicitly bypasses the gate, since it
+    intentionally has no cloud sync of its own and shares localStorage with
+    the main window instead.
+  - **Reviewed by an independent subagent before finalizing** (architecturally
+    significant boot/auth-flow change, per `CLAUDE.md`'s rule). The review
+    found 5 real bugs, two of them HIGH severity and both defeating the
+    gate's entire purpose: (1) the gate was fully bypassable via Tab+Enter
+    reaching header controls behind it, because a CSS overlay blocks clicks
+    but not tab order, compounded by every modal in the file sharing one
+    z-index so a later-opened one could paint on top; (2) `revealApp()`
+    didn't recheck the signed-in state before revealing, so a sign-out
+    racing an in-flight cloud pull could show the full app to a signed-out
+    user. Also found: a demo project would auto-seed into the shared
+    team_state row for an empty team (harmless pre-gate, wrong once the
+    seed only ever runs while signed in); a stuck gate on cross-tab sign-in;
+    a stale corrupted-data flag firing its alert even after a pull already
+    fixed things. All 5 fixed: the gate's z-index now beats every other
+    overlay regardless of DOM order, `inert` is baked into the header/app
+    markup by default and only lifted once really revealed, `revealApp()`
+    re-checks the session before proceeding, the demo-seed was removed
+    entirely (an empty pull is now a legitimate state), cross-tab sign-in
+    triggers a reveal, and the corruption flag resets every load.
+  - QA: headless Playwright covering all four boot paths (no session →
+    sign in via the gate; existing session → auto-reveal with no manual
+    action; CDN blocked → blocking offline state; sign-out → gate
+    reappears), the verify pop-out not being blocked, a dedicated test per
+    review-found fix, and a full re-run of the existing audit and
+    cloud-sync regression suites (two pre-existing scripts updated for the
+    new sign-in entry point and the removed auto-seed — expected behavior
+    changes, not regressions) — zero regressions.
+- **Not shipped in this entry** — built and QA'd on the working copy only;
+  per `CLAUDE.md`, deploying to `public/index.html` requires a separate,
+  explicit "ship it."
+
 ## v2.1 — 05 Aug 2026
 - **Fixed: all remaining Medium/Low findings from the code audit** (Notion:
   "Code Audits — AIMO Projects Tracker"; see `PENDING_CHANGES.md` P9–P13 for

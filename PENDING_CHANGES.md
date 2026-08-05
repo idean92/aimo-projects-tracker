@@ -7,7 +7,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 | # | Item | Status |
 |---|------|--------|
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
-| P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🆕 Scope confirmed by owner — not started |
+| P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
 | P12 | Audit batch 4 — schema + governance (H3, M8, M9) | ✅ Done (H3 shipped in v2.0; M8/M9 done in Batch D) |
 | P11 | Audit batch 3 — KPI correctness (H4, M5, M6, M7, L6, L7, L9, L10) | ✅ Done (H4 shipped in v2.0; M5–M10/L6/L7/L9/L10 done in Batch D) |
@@ -30,27 +30,37 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
-- **P14 — Retire local-only usage** (owner feedback via the in-app Feedback
-  button, 04 Aug 2026: *"Change the login screen to be like this. Remove the
-  prompt for session upload or download. Just load this screen and the user
-  should login first before seeing any information."* + confirmed explicitly:
-  *"local-only usage doesn't exist anymore — hence we are tied to cloudflare
-  and supabase."*). This reverses P7's original "local-first, cloud sync
-  optional" design: sign-in becomes mandatory before any project data is
-  shown. Scope, as interpreted (owner's exact screenshot wasn't viewable by
-  the agent — Notion's API didn't expose the attached file — confirm/correct
-  once seen live):
-  - App boot now shows a full-screen sign-in gate before rendering any project
-    data — no more "browse local-only, sign in later" path.
-  - The Session modal no longer auto-opens on boot (that was the local-first
-    backup/restore entry point); the Session import/export feature itself
-    stays available post-login, via the header button, as a manual
-    backup/transfer tool — not removed outright, since it's still useful and
-    the cloud-sync recovery-backup keys (`aimo_pre_pull_backup` etc.) build on
-    the same underlying idea.
-  - If Supabase/the CDN is unreachable, the app now shows a clear blocking
-    "can't connect" state instead of silently degrading to local-only, since
-    that fallback no longer exists.
+- **P14 — Retire local-only usage — implemented, reviewed, and QA'd**
+  (05 Aug 2026, owner feedback via the in-app Feedback button, 04 Aug 2026:
+  *"Change the login screen to be like this. Remove the prompt for session
+  upload or download. Just load this screen and the user should login first
+  before seeing any information."* + confirmed explicitly: *"local-only
+  usage doesn't exist anymore — hence we are tied to cloudflare and
+  supabase."*). Reverses P7's original "local-first, cloud sync optional"
+  design: sign-in is now mandatory before any project data is shown. **See
+  `CHANGELOG.md` v3.0 for the full description** — a full-screen sign-in
+  gate blocks the whole app until a signed-in session is confirmed, no more
+  silent local-only fallback if Supabase/the CDN is unreachable, the Session
+  modal no longer auto-opens on boot (still reachable post-login via the
+  header button). Note: the owner's exact screenshot for the requested
+  login-screen look wasn't viewable by the agent (Notion's API didn't expose
+  the attached file) — the gate's visual design is the agent's own
+  interpretation, not built from the screenshot; worth a look once live.
+  Versioned as v3.0 (major bump — this is a behavior-removing change).
+  **Not yet deployed** — `public/index.html` untouched, awaiting a separate
+  explicit "ship it" per `CLAUDE.md`.
+  - **Independent review** (required — architecturally significant
+    boot/auth-flow change) found 5 real bugs, two of them HIGH severity and
+    both defeating the gate entirely: it was bypassable via Tab+Enter
+    reaching header controls behind it (a CSS overlay blocks clicks but not
+    tab order, compounded by every modal sharing one z-index); and
+    `revealApp()` didn't recheck the signed-in state before revealing, so a
+    sign-out racing an in-flight pull could show the full app to a
+    signed-out user. Also found and fixed: a demo project that would've
+    auto-seeded into the shared team_state row for an empty team, a stuck
+    gate on cross-tab sign-in, and a stale corrupted-data flag firing its
+    alert after a pull already fixed things. All 5 fixed and re-verified —
+    see `CHANGELOG.md` v3.0.
 - **P15 — Batch A/B/D from the audit + feedback review** (05 Aug 2026, on the
   owner's explicit "go ahead"). Batch A (housekeeping): fixed this doc's stale
   P7 "not deployed" status (below, now ✅ Shipped); investigated the
