@@ -3,6 +3,50 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v3.2 — 05 Aug 2026
+- **"What's new", guided tour, and a Settings modal — P16 Phase 4, items 1–3**
+  (owner-approved: *"Proceed with 1,2 and 3"*). Three independent UX features
+  the Safety Tracker sibling has and this app didn't. Item 4 (viewer/read-only
+  mode) was explicitly **not** included — it's Supabase RLS work, not frontend.
+  Additive: nothing removed, no data-model change, nothing to re-enter.
+  - **What's new.** After an update, a modal lists the changes since the version
+    this browser last saw, once. The sidebar version badge is now clickable to
+    reopen it any time. Tracked per browser in `localStorage['aimo_seen_version']`
+    — a first-ever load baselines silently rather than greeting new users with a
+    changelog.
+    - This required a **second, in-app copy of the release notes**: a
+      `CHANGELOG` const near `APP_VERSION`, written benefit-first for end users,
+      alongside this file's engineering log. Both must be updated on release —
+      noted in the const's own comment and in `CLAUDE.md` § Versioning rules.
+  - **Guided tour.** A spotlight-and-bubble walkthrough covering search, Add
+    Project, opening a project, Governance/Schedule, feedback and the version
+    badge. Auto-runs once per browser (`localStorage['aimo_tour_seen']`),
+    replayable from a new header "Tour" button or from Settings. Steps whose
+    target isn't on screen are filtered out rather than shown broken — with no
+    projects yet, the "Open a project" step is skipped automatically.
+    - The dimming and the highlight ring are one element: `.tour-ring`'s
+      box-shadow paints the ring, then a 9999px spread dims everything else, so
+      the highlighted control is never restyled. A transparent `.tour-blocker`
+      underneath stops clicks reaching the dimmed app. Escape ends the tour.
+    - The two never stack: the tour waits behind "What's new" and starts when
+      it's dismissed. Neither can fire in the `?verify=` pop-out (it doesn't run
+      `revealApp()`, and both guard on `verify-mode`) or behind the sign-in gate.
+  - **Settings modal.** The header "Session" button is now "Settings" (carrying
+    the same unsaved-changes dot), with **Session Data** — the unchanged backup/
+    restore modal, one click further in — and **About** (version, date, and
+    shortcuts to What's new / Replay tour). Unlike the sibling there's no Risk &
+    Hazard Library or report-logo section; those are safety-specific. KPI
+    thresholds are overridable in data via `updateKPISetting()` but still have
+    no UI — Settings is where that would go if it's ever wanted.
+  - **Fixed:** the Session modal's footer used `class="modal-footer"`, which is
+    not a defined class, so it rendered unstyled. Now `modal-ftr`. Pre-existing,
+    but more visible now that Settings is the way in.
+  - QA: headless runs over a brand-new browser (silent baseline + tour
+    auto-start), an upgrade from v2.0 (correct entries listed, "Got it" hands
+    off to the tour), an already-current browser (nothing pops; badge click
+    still forces it), tour next/back/skip/Escape/walk-to-end, replay from
+    Settings, and an empty project list — no JavaScript errors.
+
 ## v3.1 — 05 Aug 2026
 - **Design parity with the AIMO Safety Tracker sibling — Phases 1 & 3 of P16**
   (owner request: *"review the design, UI and UX of the safety tracker and see

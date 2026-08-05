@@ -1840,6 +1840,51 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
 .p8bd.flush table{ width:100%; }
 .p8bd.flush thead th{ background:var(--bg-elevated); }
 .p8bd > .doc-summary:last-child, .p8bd > .risk-summary-strip:last-child{ margin-bottom:0; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   P16 — GUIDED TOUR (spotlight + bubble). The dimming and the highlight ring
+   are one element: .tour-ring's box-shadow paints the ring, then a 9999px
+   spread dims everything else — so the target itself is never restyled. A
+   transparent .tour-blocker underneath stops clicks reaching the dimmed app.
+   z-index sits above normal modals (600) but below the sign-in gate (9500),
+   which never coincides with the tour anyway.
+   ══════════════════════════════════════════════════════════════════════════ */
+.tour-blocker{position:fixed;inset:0;z-index:20000;background:transparent;}
+.tour-ring{
+  position:fixed;z-index:20001;pointer-events:none;border-radius:10px;
+  box-shadow:0 0 0 4px var(--bg-card),0 0 0 7px var(--accent),0 0 0 9999px rgba(26,20,51,.6);
+  transition:top .25s ease,left .25s ease,width .25s ease,height .25s ease,opacity .2s ease;
+}
+.tour-bubble{
+  position:fixed;z-index:20002;width:290px;max-width:calc(100vw - 32px);
+  max-height:calc(100vh - 24px);overflow-y:auto;
+  background:var(--bg-card);border-radius:16px;padding:16px 18px 14px;
+  box-shadow:var(--shadow-lg);
+  transition:top .25s ease,left .25s ease,opacity .2s ease;
+}
+.tour-bubble .tour-arrow{position:absolute;width:14px;height:14px;background:var(--bg-card);transform:rotate(45deg);border-radius:3px;}
+.tour-bubble.pt-right .tour-arrow{left:-6px;top:28px;}
+.tour-bubble.pt-left .tour-arrow{right:-6px;top:28px;}
+.tour-bubble.pt-top .tour-arrow{bottom:-6px;left:28px;}
+.tour-bubble.pt-bottom .tour-arrow{top:-6px;left:28px;}
+.tour-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;}
+.tour-dots{display:flex;gap:5px;align-items:center;flex-shrink:0;}
+.tour-dots span{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0;}
+.tour-dots span.on{background:var(--accent);width:16px;border-radius:4px;}
+.tour-step-lbl{font-size:10px;color:var(--text-3);font-weight:600;margin-left:6px;white-space:nowrap;}
+.tour-close{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-3);cursor:pointer;flex-shrink:0;background:none;border:none;padding:0;}
+.tour-close svg{width:12px;height:12px;}
+.tour-close:hover{background:var(--bg-elevated);color:var(--text-1);}
+.tour-title{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:18px;color:var(--text-1);margin-bottom:6px;}
+.tour-body{font-size:12.5px;line-height:1.55;color:var(--text-2);margin-bottom:14px;}
+.tour-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.tour-skip{font-family:inherit;font-size:11.5px;color:var(--text-3);font-weight:600;cursor:pointer;background:none;border:none;padding:0;flex-shrink:0;}
+.tour-skip:hover{color:var(--text-2);text-decoration:underline;}
+.tour-actions{display:flex;gap:8px;flex-shrink:0;}
+.tour-btn{font-family:inherit;font-size:12px;font-weight:600;border-radius:9px;padding:6px 13px;cursor:pointer;border:none;display:flex;align-items:center;gap:5px;}
+.tour-btn.ghost{background:transparent;color:var(--text-2);border:1px solid var(--border);}
+.tour-btn.primary{background:var(--accent);color:#fff;}
+.tour-btn.primary svg{width:11px;height:11px;}
 @media (max-width:480px){
   .p8bd{ padding:12px 12px; }
   .p8hd{ padding:11px 13px; flex-wrap:wrap; }
@@ -1918,10 +1963,14 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
       <span id="cloudSyncLabel">Sign In</span>
       <span id="cloudSyncDot" class="sync-dot"></span>
     </button>
-    <button id="sessionBtn" class="btn btn-ghost-dark btn-sm" onclick="openSessionModal()" title="Back up or restore session data" style="gap:5px;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-      Session
-      <span id="sessionDirtyDot" title="You have changes that haven’t been exported to a Session file yet" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-left:1px;"></span>
+    <button id="tourHeaderBtn" class="btn btn-ghost-dark btn-sm" onclick="startTour(true)" title="Take a quick tour of the app" style="gap:5px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+      Tour
+    </button>
+    <button id="settingsBtn" class="btn btn-ghost-dark btn-sm" onclick="openSettingsModal()" title="Settings — session data, what's new, tour" style="gap:5px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+      <span id="sessionDirtyDot" title="You have changes that haven’t been exported to a Session file yet — open Settings ▸ Session Data" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-left:1px;"></span>
     </button>
     <button class="btn btn-primary" onclick="openAddModal()">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -1963,7 +2012,7 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
     </div>
     <div class="sb-version">
       <span style="font-size:10px;color:var(--text-3);">AIMO Tracker</span>
-      <span class="sb-version-tag" id="appVersionBadge"></span>
+      <span class="sb-version-tag" id="appVersionBadge" onclick="showWhatsNew(true)" style="cursor:pointer;" title="What's new — see recent updates"></span>
     </div>
   </aside>
 
@@ -2397,8 +2446,51 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v3.1';
+const APP_VERSION  = 'v3.2';
 const APP_DATE     = '05 Aug 2026';
+
+// ── What's-new changelog (P16) ──────────────────────────────────────────────
+// Plain-language highlights shown once after each update (see showWhatsNew()).
+// Newest first; `v` must match an APP_VERSION value. Keep entries short and
+// benefit-focused — this is what the owner/users read, not the engineering log.
+// To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
+// the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
+const CHANGELOG = [
+  { v:'v3.2', date:'05 Aug 2026', items:[
+    {icon:'✨', title:'This box.', text:'A quick look at what changed each time the app updates. Reopen it any time by clicking the version number at the bottom of the sidebar.'},
+    {icon:'🧭', title:'Guided tour.', text:'A short spotlight walkthrough for anyone new — search, adding a project, Governance and Schedule, feedback and what\'s-new all get pointed out. Runs once automatically, or replay it from the "Tour" button in the header.'},
+    {icon:'⚙️', title:'Settings.', text:'The header "Session" button is now "Settings", with session backup/restore inside it under Session Data — same backup and restore, plus app info and a place to replay the tour.'},
+  ]},
+  { v:'v3.1', date:'05 Aug 2026', items:[
+    {icon:'🎨', title:'Matches the Safety Tracker.', text:'The whole app now uses the same look as the AIMO Safety Tracker — consistent rounded corners, spacing, section headers and stat tiles, so moving between the two apps no longer feels like two different products.'},
+    {icon:'🗂️', title:'Everything is a card.', text:'Each section inside a project — documents, risk assessment, verification, observations, GACA cycles — is now its own titled white card, so long tabs are far easier to scan.'},
+    {icon:'🐛', title:'Visible header logo.', text:'The AIMO logo in the top-left was painting a gradient on top of a gradient, which made it almost invisible. Fixed.'},
+  ]},
+  { v:'v3.0', date:'05 Aug 2026', items:[
+    {icon:'🔒', title:'Sign-in is now required.', text:'The app asks you to sign in before showing any project data, and no longer falls back to a local-only copy if the connection is down. Your data lives with the team, not just in this browser.'},
+    {icon:'💾', title:'No more start-up prompt.', text:'The session backup box no longer pops up every time you open the app — it is still there under the header button whenever you need it.'},
+  ]},
+  { v:'v2.1', date:'05 Aug 2026', items:[
+    {icon:'📊', title:'More accurate KPIs.', text:'Fixed several KPI calculations that could report the wrong figure — working-day counts around midnight, comment close rates disagreeing with the document register, and a few others.'},
+    {icon:'🛡️', title:'Safer saves.', text:'Closed a set of edge cases where an edit made in the verification pop-out, or in a background tab, could be silently overwritten.'},
+  ]},
+  { v:'v2.0', date:'04 Aug 2026', items:[
+    {icon:'☁️', title:'Cloud sync.', text:'Projects, governance actions and KPI settings now sync to the shared team workspace, so everyone sees the same data instead of a per-browser copy.'},
+  ]},
+  { v:'v1.4', date:'01 Aug 2026', items:[
+    {icon:'🧊', title:'Glass project cards.', text:'Project cards on the homepage got the frosted-glass treatment, replacing the old corner brackets.'},
+    {icon:'🛡️', title:'Safety tab points to the right app.', text:'The Safety tab now links across to the dedicated AIMO Safety Tracker instead of holding a stale copy of its screens.'},
+  ]},
+  { v:'v1.3', date:'01 Aug 2026', items:[
+    {icon:'✨', title:'Design refinements.', text:'Accent bars on section headers, coloured tops on the sidebar stat tiles, and a fix for the unreadable header "Session" button.'},
+  ]},
+  { v:'v1.2', date:'01 Aug 2026', items:[
+    {icon:'🎨', title:'New purple look.', text:'A full colour and shape refresh to match the AIMO brand.'},
+  ]},
+  { v:'v1.1', date:'01 Aug 2026', items:[
+    {icon:'💬', title:'Send feedback.', text:'A feedback button on every screen — bugs and ideas go straight to the team.'},
+  ]},
+];
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
 // Relative path so this works same-origin once the Cloudflare Worker (see
@@ -3132,6 +3224,14 @@ function revealApp() {
   showHomepage();
   if (gate) gate.classList.add('hidden');
   _gateLock(false);
+  // P16: post-reveal chrome. Both are best-effort — a failure here must never
+  // block the app. What's-new runs first; closeWhatsNew() hands off to the tour
+  // so the two never stack. If there's nothing new to show, start the tour now.
+  try{
+    const _hadWn = !!document.getElementById('wnOverlay');
+    _maybeShowWhatsNew();
+    if(!_hadWn && !document.getElementById('wnOverlay')) _maybeStartTour();
+  }catch(e){ console.warn('post-reveal chrome failed', e); }
 }
 
 let _agSigningIn = false;
@@ -3308,6 +3408,204 @@ function _p8(title, body, opts){
   const bdId=key?` id="p8bd-${key}"`:'';
   const bdStyle=isC?' style="display:none;"':'';
   return `<div class="p8card"><div class="p8hd"${hdAttrs}>${title}${right}</div><div${bdId} class="p8bd${opts.flush?' flush':''}"${bdStyle}>${body}</div></div>`;
+}
+
+/* ── WHAT'S NEW (P16) ────────────────────────────────────────────────────────
+   Shows the CHANGELOG entries added since the version this browser last saw,
+   once per update. Tracked per browser in localStorage (not per team) — the
+   same model the Safety Tracker sibling uses. Never blocks: any failure here
+   is caught by the caller and ignored.
+   ──────────────────────────────────────────────────────────────────────────── */
+function _wnSeenVersion(){ try{ return localStorage.getItem('aimo_seen_version')||''; }catch(e){ return ''; } }
+function _wnSetSeen(v){ try{ localStorage.setItem('aimo_seen_version', v||APP_VERSION); }catch(e){} }
+function _wnEntriesSince(seen){ const si=CHANGELOG.findIndex(e=>e.v===seen); return si<0 ? CHANGELOG.slice(0,1) : CHANGELOG.slice(0, si); }
+function _maybeShowWhatsNew(){
+  try{ if(document.body && document.body.classList.contains('verify-mode')) return; }catch(e){}
+  const seen=_wnSeenVersion();
+  if(!seen){ _wnSetSeen(APP_VERSION); return; }   // first-ever load: baseline silently, don't nag
+  if(seen===APP_VERSION) return;                   // already on the current build
+  if(!_wnEntriesSince(seen).length){ _wnSetSeen(APP_VERSION); return; } // nothing new to show
+  showWhatsNew(false);
+}
+function showWhatsNew(force){
+  if(document.getElementById('wnOverlay')) return;
+  let entries = force ? CHANGELOG.slice() : _wnEntriesSince(_wnSeenVersion());
+  if(!entries.length) entries = CHANGELOG.slice(0,1);   // badge click with nothing new → show latest
+  const isNew = (e,idx)=> force ? (e.v===APP_VERSION) : (idx===0);
+  const list = entries.map((e,idx)=>`
+    <div style="margin-bottom:18px;">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px;">
+        <span style="font-size:13px;font-weight:800;color:var(--accent);background:var(--bg-elevated);border:1px solid var(--border);padding:3px 10px;border-radius:20px;">${esc(e.v)}</span>
+        <span style="font-size:11.5px;color:var(--text-3);">${esc(e.date)}</span>
+        ${isNew(e,idx)?'<span style="font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:var(--green);padding:2px 7px;border-radius:20px;">New</span>':''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px;">
+        ${(e.items||[]).map(it=>`<div style="display:flex;gap:10px;font-size:13px;color:var(--text-1);line-height:1.45;">
+          <span style="flex:none;width:22px;height:22px;border-radius:6px;background:var(--bg-elevated);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;">${esc(it.icon||'•')}</span>
+          <div><b>${esc(it.title)}</b> ${esc(it.text)}</div></div>`).join('')}
+      </div>
+    </div>`).join('');
+  const ov=document.createElement('div'); ov.className='overlay'; ov.id='wnOverlay';
+  ov.innerHTML=`<div class="modal" style="max-width:520px;">
+      <div class="modal-hdr" style="background:var(--brand-grad);color:#fff;border-bottom:none;align-items:flex-start;">
+        <div><div style="font-size:22px;line-height:1;">✨</div><h2 style="color:#fff;margin-top:6px;">What's new</h2><p style="color:rgba(255,255,255,.85);">You're on the latest build — here's what changed.</p></div>
+        <button class="close-btn" style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.3);color:#fff;" onclick="closeWhatsNew()" aria-label="Close">&#10005;</button></div>
+      <div class="modal-body">${list}</div>
+      <div class="modal-ftr"><span style="font-size:11px;color:var(--text-3);line-height:1.4;">${force?'Recent updates.':'Shown once after each update — reopen any time from the version number below.'}</span>
+        <button class="btn btn-primary btn-sm" style="white-space:nowrap;flex:none;" onclick="closeWhatsNew()">Got it</button></div>
+    </div>`;
+  ov.addEventListener('click',e=>{ if(e.target===ov) closeWhatsNew(); });
+  document.body.appendChild(ov);
+}
+function closeWhatsNew(){
+  _wnSetSeen(APP_VERSION);
+  const ov=document.getElementById('wnOverlay'); if(ov) ov.remove();
+  // The tour waits behind What's-new so the two never stack.
+  try{ _maybeStartTour(); }catch(e){}
+}
+
+/* ── GUIDED TOUR (P16) ───────────────────────────────────────────────────────
+   Spotlight + bubble walkthrough for first-time users. Auto-runs once per
+   browser (localStorage['aimo_tour_seen'], same per-browser model as
+   'aimo_seen_version' above) and is re-runnable from the header "Tour" button.
+   Steps whose target isn't on screen are skipped rather than shown broken.
+
+   The dimming and the highlight ring are the same element: .tour-ring's
+   box-shadow paints the ring, then a 9999px spread dims everything else — so
+   the target element itself is never touched. A transparent .tour-blocker sits
+   under it to stop clicks reaching the dimmed app.
+   ──────────────────────────────────────────────────────────────────────────── */
+const TOUR_STEPS=[
+  { sel:'#sideSearch', title:'Find any project instantly', body:'Search by project name or reference — the list filters as you type.' },
+  { sel:'.sb-add-btn button', title:'Add a project', body:'Every MOC project starts here. Click whenever you\'re ready to track a new one.' },
+  { sel:'#sidebarList .sb-project', title:'Open a project', body:'Click into a project for its milestones, document registers, GACA cycles, KPIs and schedule.' },
+  { sel:'#mainTabGovernance', title:'Governance & schedule', body:'Actions raised across all projects live under Governance; Schedule rolls every project\'s task chain into one view.' },
+  { sel:'#fbFab', title:'Send feedback', body:'Spot a bug or have an idea? This goes straight to the team.' },
+  { sel:'#appVersionBadge', title:'What\'s new', body:'Click the version number here anytime to see what changed in the latest build.' },
+];
+let _tourActive=[]; let _tourIdx=0; let _tourResizeBound=null; let _tourRaf=null; let _tourKeyBound=null;
+function _tourSeen(){ try{ return !!localStorage.getItem('aimo_tour_seen'); }catch(e){ return true; } }
+function _tourSetSeen(){ try{ localStorage.setItem('aimo_tour_seen','1'); }catch(e){} }
+function _maybeStartTour(){
+  try{
+    if(document.body.classList.contains('verify-mode')) return;
+    // never stack on another full-screen surface
+    if(document.getElementById('wnOverlay')) return;
+    const gate=document.getElementById('authGate');
+    if(gate && !gate.classList.contains('hidden')) return;
+    if(_tourSeen()) return;
+    startTour(false);
+  }catch(e){ console.warn('tour autostart failed', e); }
+}
+function startTour(manual){
+  const steps=TOUR_STEPS.filter(s=>{ const el=document.querySelector(s.sel); return el && el.getClientRects().length; });
+  if(!steps.length){ if(manual) showToast('Nothing to show the tour yet — add a project first.','warn'); return; }
+  _tourActive=steps; _tourIdx=0; _tourSetSeen();
+  _tourRenderStep();
+  if(!_tourResizeBound){ _tourResizeBound=()=>{ if(_tourActive.length) _tourRenderStep(); }; window.addEventListener('resize',_tourResizeBound); }
+  if(!_tourKeyBound){ _tourKeyBound=e=>{ if(e.key==='Escape' && _tourActive.length) _tourEnd(); }; window.addEventListener('keydown',_tourKeyBound); }
+}
+function _tourPlacement(rect,bw,bh){
+  const vw=window.innerWidth,vh=window.innerHeight,gap=14;
+  const clampTop=t=>Math.min(Math.max(t,12),Math.max(12,vh-bh-12));
+  const clampLeft=l=>Math.min(Math.max(l,12),Math.max(12,vw-bw-12));
+  if(vw-rect.right>=bw+gap) return {placement:'right', top:clampTop(rect.top), left:rect.right+gap};
+  if(rect.left>=bw+gap) return {placement:'left', top:clampTop(rect.top), left:rect.left-gap-bw};
+  if(vh-rect.bottom>=bh+gap) return {placement:'bottom', top:rect.bottom+gap, left:clampLeft(rect.left)};
+  return {placement:'top', top:clampTop(rect.top-gap-bh), left:clampLeft(rect.left)};
+}
+function _tourRenderStep(){
+  _tourTeardownDom();
+  if(_tourRaf){ cancelAnimationFrame(_tourRaf); _tourRaf=null; }
+  if(_tourIdx>=_tourActive.length){ _tourEnd(); return; }
+  const step=_tourActive[_tourIdx];
+  let el=document.querySelector(step.sel);
+  if(!el){ _tourIdx++; _tourRenderStep(); return; }   // target vanished mid-tour — skip it
+  if(el.scrollIntoView) el.scrollIntoView({block:'nearest', inline:'nearest'});
+  // re-query after scrolling — layout may have just changed
+  const myIdx=_tourIdx;
+  _tourRaf=requestAnimationFrame(()=>{
+    _tourRaf=null;
+    if(myIdx!==_tourIdx || !_tourActive.length) return;   // superseded by a newer render — bail
+    el=document.querySelector(step.sel);
+    if(!el){ _tourIdx++; _tourRenderStep(); return; }
+    const rect=el.getBoundingClientRect();
+
+    const blocker=document.createElement('div'); blocker.className='tour-blocker'; blocker.id='tourBlocker';
+    document.body.appendChild(blocker);
+
+    const ring=document.createElement('div'); ring.className='tour-ring'; ring.id='tourRing';
+    ring.style.top=rect.top-4+'px'; ring.style.left=rect.left-4+'px';
+    ring.style.width=rect.width+8+'px'; ring.style.height=rect.height+8+'px';
+    document.body.appendChild(ring);
+
+    const bw=Math.min(290,window.innerWidth-32), bh=170;
+    const pos=_tourPlacement(rect,bw,bh);
+    const dots=_tourActive.map((_,i)=>`<span class="${i===_tourIdx?'on':''}"></span>`).join('');
+    const bubble=document.createElement('div');
+    bubble.className='tour-bubble pt-'+pos.placement; bubble.id='tourBubble';
+    bubble.setAttribute('role','dialog'); bubble.setAttribute('aria-modal','true');
+    bubble.style.top=pos.top+'px'; bubble.style.left=pos.left+'px';
+    bubble.innerHTML=`<div class="tour-arrow"></div>
+      <div class="tour-head">
+        <div class="tour-dots">${dots}<span class="tour-step-lbl">${_tourIdx+1} / ${_tourActive.length}</span></div>
+        <button class="tour-close" onclick="_tourEnd()" aria-label="Close tour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="tour-title">${esc(step.title)}</div>
+      <div class="tour-body">${esc(step.body)}</div>
+      <div class="tour-foot">
+        <button class="tour-skip" onclick="_tourEnd()">Skip tour</button>
+        <div class="tour-actions">
+          ${_tourIdx>0?'<button class="tour-btn ghost" onclick="_tourBack()">Back</button>':''}
+          <button class="tour-btn primary" onclick="_tourNext()">${_tourIdx===_tourActive.length-1?'Done':'Next'}
+            ${_tourIdx===_tourActive.length-1?'':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'}
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(bubble);
+    bubble.querySelector('.tour-btn.primary').focus();
+  });
+}
+function _tourNext(){ _tourIdx++; _tourRenderStep(); }
+function _tourBack(){ if(_tourIdx>0){ _tourIdx--; _tourRenderStep(); } }
+function _tourTeardownDom(){ document.querySelectorAll('.tour-blocker,.tour-ring,.tour-bubble').forEach(el=>el.remove()); }
+function _tourEnd(){
+  if(_tourRaf){ cancelAnimationFrame(_tourRaf); _tourRaf=null; }
+  _tourTeardownDom(); _tourActive=[]; _tourIdx=0;
+  if(_tourResizeBound){ window.removeEventListener('resize',_tourResizeBound); _tourResizeBound=null; }
+  if(_tourKeyBound){ window.removeEventListener('keydown',_tourKeyBound); _tourKeyBound=null; }
+}
+
+/* ── SETTINGS MODAL (P16) ────────────────────────────────────────────────────
+   The sibling folded its header "Session" button into a Settings modal; this
+   does the same. Unlike the sibling there's no Risk & Hazard Library or report
+   logo here — those are safety-specific — so Settings carries Session Data and
+   About. (KPI thresholds are overridable in data via updateKPISetting() but
+   have no UI yet; this is where that would go.)
+   ──────────────────────────────────────────────────────────────────────────── */
+function openSettingsModal(){ const o=document.getElementById('settingsOverlay'); if(o){ o.classList.remove('hidden'); renderSettingsBody(); } }
+function closeSettingsModal(){ const o=document.getElementById('settingsOverlay'); if(o) o.classList.add('hidden'); }
+function renderSettingsBody(){
+  const body=document.getElementById('settingsBody'); if(!body) return;
+  const dirty=_dirtySinceBackup;
+  body.innerHTML=`
+    <div class="sec-label" style="margin-bottom:8px;">Session Data</div>
+    ${dirty?`<div style="background:rgba(224,123,0,.09);border:1px solid rgba(224,123,0,.3);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--text-2);margin-bottom:12px;">
+        You have changes that haven't been exported to a session file yet.</div>`:''}
+    <button class="btn btn-ghost btn-sm" onclick="closeSettingsModal();openSessionModal();">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Back up / restore session&#8230;</button>
+    <div style="margin-top:8px;font-size:11px;color:var(--text-3);">Download a full backup, or restore from a previous session file. Your data also syncs to the shared team workspace automatically.</div>
+
+    <div class="sec-label" style="margin:22px 0 8px;">About</div>
+    <div style="font-size:12px;color:var(--text-2);line-height:1.6;">
+      AIMO Tracker <b>${esc(APP_VERSION)}</b> &#183; ${esc(APP_DATE)}<br>
+      <span style="color:var(--text-3);">KSIA Aerodrome Project Management</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="closeSettingsModal();showWhatsNew(true);">&#10024; What's new</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeSettingsModal();startTour(true);">&#129517; Replay tour</button>
+    </div>`;
 }
 
 /* ── FEEDBACK ── */
@@ -13868,6 +14166,18 @@ function closeSessionModal() {
 </script>
 
 
+<!-- SETTINGS MODAL (P16) -->
+<div class="overlay hidden" id="settingsOverlay" onclick="if(event.target===this)closeSettingsModal()">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-hdr">
+      <div><h2>Settings</h2><p>Session data and app information.</p></div>
+      <button class="close-btn" onclick="closeSettingsModal()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body" id="settingsBody"></div>
+    <div class="modal-ftr"><div style="margin-left:auto;"><button class="btn btn-ghost" onclick="closeSettingsModal()">Close</button></div></div>
+  </div>
+</div>
+
 <!-- SESSION STARTUP MODAL -->
 <div class="overlay hidden" id="sessionModal" style="background:rgba(0,0,0,.55);">
   <div class="modal" style="max-width:460px;">
@@ -13900,7 +14210,9 @@ function closeSessionModal() {
       </div>
 
     </div>
-    <div class="modal-footer" style="justify-content:flex-end;">
+    <!-- P16: was class="modal-footer", which is not a defined class — the footer
+         rendered unstyled. Now that Settings is the way in, it's more visible. -->
+    <div class="modal-ftr" style="justify-content:flex-end;">
       <button class="btn btn-primary" onclick="closeSessionModal()">Continue →</button>
     </div>
   </div>

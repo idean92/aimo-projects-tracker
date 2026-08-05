@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | 🔧 Phases 1 & 3 built + QA'd, version bumped (v3.1) — awaiting explicit "ship it". Phases 2 & 4 not started |
+| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | 🔧 Phases 1 & 3 (v3.1) and Phase 4 items 1–3 (v3.2) built + QA'd — awaiting explicit "ship it". Phase 2 not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
@@ -73,13 +73,26 @@ _(none yet)_
     array — this app has none), guided tour, Settings-modal consolidation of the
     Session button, viewer/read-only mode. Each its own decision.
 
-  **Status (05 Aug 2026): Phases 1 & 3 implemented and QA'd, versioned v3.1 —
-  see `CHANGELOG.md` v3.1 for the full description.** Not yet deployed;
-  `public/index.html` untouched, awaiting a separate explicit "ship it" per
-  `CLAUDE.md`. The pre-deploy review subagent for Phase 3 (it touches ~10
-  shared render functions) has **not** been run yet — that's a ship-time gate,
-  to run against the final diff. Phases 2 (mobile layer) and 4 (UX features)
-  are not started.
+  **Status (05 Aug 2026):**
+  - **Phases 1 & 3 — implemented and QA'd, versioned v3.1** (see `CHANGELOG.md`).
+  - **Phase 4 items 1–3 — implemented and QA'd, versioned v3.2** on the owner's
+    *"Proceed with 1,2 and 3"*: the "What's new" modal, the guided tour, and the
+    Settings modal (header "Session" → "Settings", session backup/restore moved
+    inside). Item 4 (viewer/read-only mode) explicitly **out of scope** — it's
+    Supabase RLS work on the `projects` schema, not frontend, and needs its own
+    decision about what a viewer is for this app.
+    - Note: "What's new" introduced a **second, in-app copy of the release
+      notes** (`const CHANGELOG` in `aimo-tracker.html`). Both it and
+      `CHANGELOG.md` must be updated on every release — added to `CLAUDE.md`
+      § Versioning rules.
+  - **Phase 2 (mobile layer) not started** — still the largest remaining UX gap:
+    this app has no phone support at all (no drawer nav, no full-screen modals,
+    no safe-area handling).
+
+  Neither version is deployed; `public/index.html` is untouched, awaiting a
+  separate explicit "ship it" per `CLAUDE.md`. The pre-deploy review subagent
+  for Phase 3 (it touches ~10 shared render functions) has **not** been run yet
+  — that's a ship-time gate, to run against the final diff.
 
   **Three open decisions — resolved by the owner, 05 Aug 2026: all three
   recommendations accepted** (keep the glass cards, switch the detail tab bar

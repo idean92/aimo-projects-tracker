@@ -58,11 +58,12 @@ sufficient alone.
 
 ## Feedback / change-request process
 A Notion workspace mirroring the Safety Tracker's pattern exists for this project —
-see `docs/NOTION.md` for the page/database IDs. The **in-app feedback button and its
-Cloudflare Pages Function endpoint are not built yet**; the Notion side (Feedback
-Inbox database + Pending Changes page) is provisioned and ready for when that's
-implemented. Until the button exists, change requests still come directly from the
-owner in conversation. The same discipline applies either way:
+see `docs/NOTION.md` for the page/database IDs. The in-app feedback button **is
+built and live** (shipped in P1/v1.1): the floating `#fbFab` button + modal in
+`aimo-tracker.html`, filing into the Notion Feedback Inbox via the Worker endpoint
+in `src/worker.js`. (This section previously said it wasn't built — corrected
+05 Aug 2026.) Change requests also still come directly from the owner in
+conversation. The same discipline applies either way:
 1. Consolidate a request into `PENDING_CHANGES.md` as a new item (short
    root-cause/approach note) — do not touch `aimo-tracker.html` yet.
 2. Build only on an explicit go ("go", "build it", "start", "implement").
@@ -86,6 +87,11 @@ Skip review for minor/patch bumps, styling, copy edits, small isolated fixes.
   `X`, reset `Y`.
 - `const APP_VERSION` and the sidebar version badge (`#appVersionBadge`) must stay in
   sync with the latest `CHANGELOG.md` entry.
+- **Two changelogs, both updated on release.** `CHANGELOG.md` is the engineering
+  log; the `const CHANGELOG` array in `aimo-tracker.html` (just below
+  `APP_VERSION`) drives the in-app "What's new" modal and is written
+  benefit-first for end users. A release adds an entry to *both*, and the new
+  entry's `v` must match `APP_VERSION` or the modal won't show it.
 - Never require the owner to wipe `localStorage`/session data to adopt a new version.
 
 ## Related project
