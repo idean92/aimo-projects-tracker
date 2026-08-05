@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | 📋 Consolidated — Phase 1 + Phase 3 plans drafted, awaiting approval to implement |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
@@ -30,6 +31,80 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
+- **P16 — Design/UI/UX parity with the Safety Tracker sibling** (05 Aug 2026,
+  owner request: *"review the design, UI and UX of the safety tracker and see
+  what changes need to be made to the Projects tracker so that they are
+  identical and very similar"*). **Consolidated only — nothing implemented.**
+
+  **Root cause of the drift.** Both apps still share the same base stylesheet —
+  class names, structure and section order are near-identical, and every
+  component class the Safety Tracker restyles already exists here. The gap is
+  four layers Safety appended after the 2026-07-19 split that this app never
+  received:
+  1. A "daa International 2025 brand re-skin" flattening everything to
+     `border-radius:0`;
+  2. an **iOS-polish layer** appended later that re-rounds and re-shadows almost
+     all of it — this, not the sharp look, is Safety's *current* language;
+  3. **Refined Pages (V3.4)** + **P8 section cards (V4.0)** — accent-bar section
+     headers, gapped elevated stat tiles, white section cards;
+  4. a **Mobile Responsive Layer** (drawer nav, phone modals, safe-area insets).
+
+  Because the layers' selectors override the base regardless of its value, this
+  app's 8px-rounded base does **not** need unwinding first — porting is largely
+  a CSS append.
+
+  **Phased approach** (full review in the agent's parity report; Phases 1 and 3
+  are planned in detail and awaiting approval):
+  - **Phase 1 — visual parity.** CSS-only. Brand palette tokens, `--text-3`,
+    `100dvh`, the iOS-polish and Refined-Pages layers, plus point fixes (header
+    logo, header ghost buttons, detail-tab active colour). Low risk, no markup
+    or logic touched.
+  - **Phase 2 — mobile layer.** The single largest UX gap: this app has four
+    breakpoints that only narrow the sidebar, and no phone support at all.
+    Safety adds a hamburger + off-canvas drawer, horizontally-scrolling nav
+    bars, icon-only header, full-screen modals, 40–44px tap targets, and
+    `env(safe-area-inset-*)` notch handling. All additive inside media queries.
+    Not yet planned in detail.
+  - **Phase 3 — P8 section cards.** Port `.p8card`/`.p8hd`/`.p8bd` CSS plus the
+    `_p8()`/`_p8Toggle()` helpers, then wrap this app's inner-page sections
+    (24 `.sec-label` sections across 8 build functions, 22 `.info-panel-title`
+    panels, 1 `.sched-section-hdr`). Touches shared render paths.
+  - **Phase 4 — UX features.** What's-new modal (needs an in-app `CHANGELOG`
+    array — this app has none), guided tour, Settings-modal consolidation of the
+    Session button, viewer/read-only mode. Each its own decision.
+
+  **Three open decisions — each would reverse an explicit prior owner request:**
+  - **Glass project cards.** P5 (v1.4) removed the crosshair corner brackets and
+    added the frosted-glass card on direct owner feedback ("iPhone glass" look).
+    Safety uses solid + border + soft shadow instead. *Recommendation: keep the
+    glass* — it's a deliberate owner preference and nothing else in the parity
+    work depends on it.
+  - **Amber active detail-tab.** P3 (v1.3) added the amber/orange active-nav
+    indicator, built from owner screenshots of the live Safety Tracker. But
+    Safety's `.tab-btn.active` is `var(--accent)` purple; amber (`#e07b00`)
+    survives there only on `.safety-sub-btn` — so P3 most likely mirrored the
+    sub-bar onto the wrong bar. *Recommendation: switch to accent purple.*
+  - **Coloured top borders on sidebar stat tiles.** P3 added them deliberately;
+    Safety has since dropped them in favour of rounded elevated tiles.
+    *Recommendation: keep the coloured border AND add the 12px radius* — they
+    compose fine.
+
+  **Do not copy from Safety** (this app is currently the better of the two —
+  Safety's iOS layer is class-based and missed these, leaving re-skin
+  leftovers): `.toast-item`, `.close-btn`, `.ms-date-inp`, `.task-inp`,
+  `::-webkit-scrollbar-thumb` and `.form-map-wrap` are all `border-radius:0` in
+  Safety and sensibly rounded here. Safety's `.card-visual` also has no top
+  radius, so its map renders square corners inside an 18px rounded card — a real
+  visual bug there, already fixed here in P2. Safety also still emits four
+  `<i class="corner">` bracket decorations on a now-rounded, shadowed card —
+  the very crosshairs P5 removed here. These are worth fixing in the sibling
+  rather than regressing this app.
+
+  **Correction to `CLAUDE.md`:** it states the in-app feedback button "is not
+  built yet". It *is* built and present — `.fb-fab` CSS, `openFeedbackModal()`,
+  and the `#fbFab` button (`aimo-tracker.html:13798`), shipped in P1/v1.1. The
+  CLAUDE.md wording needs updating either way; worth re-verifying the Worker
+  endpoint still resolves while we're in there.
 - **P14 — Retire local-only usage — implemented, reviewed, and QA'd**
   (05 Aug 2026, owner feedback via the in-app Feedback button, 04 Aug 2026:
   *"Change the login screen to be like this. Remove the prompt for session
