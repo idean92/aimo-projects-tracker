@@ -1315,6 +1315,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;
 .kpi-rag-pill.rag-red{background:rgba(200,48,44,.12);border-color:rgba(200,48,44,.3);color:#c0392b;}
 .kpi-val{font-size:24px;font-weight:800;line-height:1.1;margin:5px 0 2px;color:var(--text-3);}
 .kpi-val.rag-green{color:#1a7a4a;}.kpi-val.rag-amber{color:#8a5c00;}.kpi-val.rag-red{color:#c0392b;}
+.kpi-sub.rag-green{color:#1a7a4a;}.kpi-sub.rag-amber{color:#8a5c00;}.kpi-sub.rag-red{color:#c0392b;}
 .kpi-name{font-size:11px;font-weight:600;color:var(--text-1);margin-bottom:3px;}
 .kpi-target{font-size:10px;color:var(--text-3);}
 .kpi-sub{font-size:10px;margin-top:3px;}
@@ -1785,7 +1786,7 @@ body.verify-mode .fb-fab{display:none!important;}
     </div>
     <div class="sb-version">
       <span style="font-size:10px;color:var(--text-3);">AIMO Tracker</span>
-      <span class="sb-version-tag" id="appVersionBadge">v1.0 · 07 Jul 2026</span>
+      <span class="sb-version-tag" id="appVersionBadge"></span>
     </div>
   </aside>
 
@@ -2219,8 +2220,8 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v2.0';
-const APP_DATE     = '04 Aug 2026';
+const APP_VERSION  = 'v2.1';
+const APP_DATE     = '05 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
 // Relative path so this works same-origin once the Cloudflare Worker (see
@@ -2429,6 +2430,13 @@ function lsSet(key, value) {
     if (!_sbApplyingRemote && (key === STORAGE_KEY || key === GOVERNANCE_KEY || key === KPI_SETTINGS_KEY)) {
       sbSchedulePush();
     }
+    // L5: a write succeeding again after an earlier failure means there's room again — clear
+    // the persistent failure indicator and re-arm the one-time alert for any future failure.
+    if (_storageWarned) {
+      _storageWarned = false;
+      const dot = document.getElementById('sessionDirtyDot');
+      if (dot) { dot.style.background = 'var(--amber)'; dot.title = 'You have changes that haven’t been exported to a Session file yet'; }
+    }
     return true;
   } catch (e) {
     if (!_storageWarned) {
@@ -2437,6 +2445,11 @@ function lsSet(key, value) {
           + 'Download a Session backup now (top bar → Session → Download Session File) so you don’t lose data, '
           + 'then free space by removing old projects or opening the file in a fresh browser profile.');
     }
+    // L5: the alert above only fires once per page lifetime (avoids spamming on repeated
+    // failures) — but later failures shouldn't go completely silent, so keep a persistent red
+    // dot visible on the header's Session button regardless of the "unsaved backup" dirty state.
+    const dot = document.getElementById('sessionDirtyDot');
+    if (dot) { dot.style.display = 'inline-block'; dot.style.background = 'var(--red)'; dot.title = 'Storage is full — recent changes may not have saved. Download a Session backup now.'; }
     return false;
   }
 }
@@ -2448,7 +2461,7 @@ function setBackupDirty(v) {
   const dot = document.getElementById('sessionDirtyDot');
   if (dot) dot.style.display = v ? 'inline-block' : 'none';
 }
-function saveProjects() { lsSet(STORAGE_KEY, state.projects); setBackupDirty(true); }
+function saveProjects() { saveTimer = null; lsSet(STORAGE_KEY, state.projects); setBackupDirty(true); }
 function debouncedSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveProjects, 600); }
 // Safe localStorage read — returns `fallback` on a missing key OR corrupted/unparseable JSON.
 function lsGet(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return (v===null||v===undefined)?fallback:v; } catch(e) { return fallback; } }
@@ -2924,10 +2937,9 @@ function getCompletionDate(p) {
   const c=p.milestones?.project_completion||{};
   if (c.actual)  return { label:'Completed',      date:c.actual, overdue:false };
   if (c.planned) {
-    const today=new Date(); today.setHours(0,0,0,0);
     // Estimate branch only reached when the project isn't complete (no actual completion),
     // so a forecast date in the past means the forecast is stale, not that we're done.
-    const overdue = new Date(c.planned) < today;
+    const overdue = isPastDue(c.planned);
     return { label:'Est. Completion', date:c.planned, overdue };
   }
   return null;
@@ -3366,21 +3378,45 @@ const KSA_HOLIDAYS = new Set([
 ]);
 function workingDaysKSA(fromISO, toISO) {
   if (!fromISO || !toISO) return null;
-  const d = new Date(fromISO); d.setHours(0,0,0,0);
-  const end = new Date(toISO); end.setHours(0,0,0,0);
-  if (end <= d) return 0;
+  // M6: do the whole loop in UTC. `new Date('YYYY-MM-DD')` parses as UTC midnight; the old
+  // code then used local getDay()/setDate(), which shifts the effective date back a day for
+  // any viewer in a UTC-negative timezone — correct only for someone physically in KSA
+  // (UTC+3). Parsing AND stepping in UTC keeps the Fri/Sat weekend + KSA_HOLIDAYS lookups
+  // correct regardless of the viewer's own timezone.
+  const d = new Date(fromISO + 'T00:00:00Z');
+  const end = new Date(toISO + 'T00:00:00Z');
+  // M5: a response dated before its own submission is invalid data, not a real 0-day
+  // turnaround — return null so callers can skip the pair rather than counting it as 0.
+  if (end < d) return null;
+  if (end.getTime() === d.getTime()) return 0;
   let count = 0;
   const cur = new Date(d);
-  cur.setDate(cur.getDate() + 1);
+  cur.setUTCDate(cur.getUTCDate() + 1);
   while (cur <= end) {
-    const day = cur.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-    // Build the ISO string from local components — cur is at local midnight, so
-    // toISOString() would shift to the previous day in UTC+ timezones (e.g. KSA UTC+3).
-    const iso = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    const day = cur.getUTCDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+    const iso = cur.toISOString().slice(0, 10);
     if (day !== 5 && day !== 6 && !KSA_HOLIDAYS.has(iso)) count++;
-    cur.setDate(cur.getDate() + 1);
+    cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return count;
+}
+// M5: sort a stage's reviewEvents by date before pairing consecutive submission/response
+// events — pairing by raw array order silently mismatches whenever entries were added out of
+// chronological order. Returns a new array; never mutates the stored events.
+function sortedReviewEvents(events) {
+  return [...(events || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+// L11: shared overdue-date check — string comparison against a locally-built today string
+// (viewer's own calendar day, not UTC — "is this overdue" is inherently relative to whoever's
+// looking at it). Several call sites previously used raw Date-object comparisons in
+// inconsistent ways (some against local midnight, some against the current moment including
+// time-of-day, one against UTC-midnight) — right at the due date itself, these could disagree
+// on whether the same date was overdue.
+function isPastDue(iso) {
+  if (!iso) return false;
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  return iso < todayIso;
 }
 function kreiScores(p) {
   const PKG_STAGES = [
@@ -3436,7 +3472,7 @@ function kreiScores(p) {
   // C: Timeliness -- response->submission working-day pairs
   const rsubDetails = [];
   PKG_STAGES.forEach(({key, label}) => {
-    const events = p.stageDocs?.[key]?.reviewEvents || [];
+    const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
     for (let i = 0; i < events.length - 1; i++) {
       if (events[i].type === 'response' && events[i+1].type === 'submission'
           && events[i].date && events[i+1].date) {
@@ -3578,7 +3614,10 @@ function calcKPIs(p) {
     { pkgKey:'gaca_commissioning_submission', subKey:'gaca_commissioning_acceptance' },
   ].forEach(({pkgKey, subKey}) => {
     const events   = p.stageDocs?.[pkgKey]?.reviewEvents || [];
-    const firstSub = events.find(e => e.type==='submission' && !e.isNonGaca && e.date);
+    // L9: exclude partial submissions — the footnote already says the E2E clock starts at the
+    // first NON-partial submission, but this predicate didn't filter isPartial, inflating days
+    // whenever a partial submission was logged before the real first submission.
+    const firstSub = events.find(e => e.type==='submission' && !e.isNonGaca && !e.isPartial && e.date);
     const log      = p.stageDocs?.[subKey]?.submissionLog || [];
     const gacaFirst = log.filter(r => r.dateSubmitted)
       .sort((a,b) => new Date(a.dateSubmitted)-new Date(b.dateSubmitted))[0];
@@ -3601,7 +3640,7 @@ function calcKPIs(p) {
   // KPI 7: RAC-RTT — working days from submission event to next response event
   let rttDays = [];
   PKG.forEach(({key}) => {
-    const events = p.stageDocs?.[key]?.reviewEvents || [];
+    const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
     for (let i=0; i<events.length-1; i++) {
       if (events[i].type==='submission' && events[i+1].type==='response'
           && events[i].date && events[i+1].date) {
@@ -3613,12 +3652,15 @@ function calcKPIs(p) {
   const racRtt = rttDays.length ? Math.round(rttDays.reduce((a,b)=>a+b,0)/rttDays.length) : null;
 
   // KPI 8: CCR — Comment Close Rate (totalClosed / totalRaised across all review stages)
+  // M7: sourced from the doc register (docList), same source KREI's Correct Closure
+  // component uses — previously summed from reviewEvents instead, an independently
+  // user-editable figure that could (and did) disagree with KREI's on identical comments.
   let ccrRaised = 0, ccrClosed = 0;
   PKG.forEach(({key}) => {
-    const events = p.stageDocs?.[key]?.reviewEvents || [];
-    events.forEach(ev => {
-      ccrRaised += ev.commentsRaised || 0;
-      ccrClosed += ev.commentsClosed || 0;
+    (p.stageDocs?.[key]?.docList || []).forEach(d => {
+      if (!d.enabled) return;
+      ccrRaised += d.commentsRaised || 0;
+      ccrClosed += d.commentsClosed || 0;
     });
   });
   const ccr = ccrRaised > 0 ? Math.round((ccrClosed / ccrRaised) * 100) : null;
@@ -3645,6 +3687,11 @@ function kpiRag(val, goodT, warnT, invert) {
   if (invert) return val <= goodT ? 'green' : val <= warnT ? 'amber' : 'red';
   return val >= goodT ? 'green' : val >= warnT ? 'amber' : 'red';
 }
+// L7: shared hex mapping for kpiRag's class, so KPI detail-view big-number colors can be
+// derived from getKPIS(num,...) (respects overridden thresholds) instead of hardcoded
+// literals that silently stopped matching the scorecard pill once a threshold was changed
+// in KPI Settings.
+function ragHex(cls) { return cls==='green'?'#1a7a4a':cls==='amber'?'#8a5c00':cls==='red'?'#c0392b':'var(--text-3)'; }
 const RAG_LABEL = { green:'On Target', amber:'Caution', red:'Below Target', none:'No Data' };
 
 /* ── KPI Settings helpers ─────────────────────────────────────────── */
@@ -3685,7 +3732,7 @@ function buildKPIScorecard(p) {
       <div class="kpi-val${hasDot?' rag-'+ragCls:''}">${valStr}</div>
       <div class="kpi-name">${name}</div>
       <div class="kpi-target">Target: ${target}</div>
-      ${subLine?`<div class="kpi-sub" style="color:${ragCls==='none'?'var(--text-3)':'rag-'+ragCls}">${subLine}</div>`:''}
+      ${subLine?`<div class="kpi-sub${ragCls==='none'?'':' rag-'+ragCls}" style="${ragCls==='none'?'color:var(--text-3);':''}">${subLine}</div>`:''}
       ${noDataMsg?`<div class="kpi-sub" style="font-style:italic;color:var(--text-3);margin-top:3px;">${noDataMsg}</div>`:''}
       <div style="font-size:9px;color:var(--text-3);margin-top:8px;text-align:right;">Click for detail ›</div>
     </div>`;
@@ -3707,8 +3754,12 @@ function buildKPIScorecard(p) {
 
   // Build target strings from live settings
   const tgt = num => {
-    const d = KPI_DEFAULTS[num]; const g = getKPIS(num,'goodT'); const u = getKPIS(num,'unit');
-    return (d.invert ? '≤ ' : '≥ ') + g + u;
+    // L6: arrow direction must respect an overridden invert setting, same as the threshold
+    // value itself — was reading KPI_DEFAULTS[num].invert (the hardcoded default) instead of
+    // getKPIS(num,'invert') (the effective, possibly-overridden value), so flipping invert in
+    // KPI Settings changed the target number but left the ≥/≤ arrow pointing the old way.
+    const g = getKPIS(num,'goodT'); const u = getKPIS(num,'unit'); const inv = getKPIS(num,'invert');
+    return (inv ? '≤ ' : '≥ ') + g + u;
   };
 
   const settingsHTML = `
@@ -3979,7 +4030,7 @@ function buildKPIDetailHTML(num, p, k) {
     });
     const avg = k.psqs !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">PSQS (first submission):</span>
-      <span style="font-size:20px;font-weight:800;color:${k.psqs>=80?'#1a7a4a':k.psqs>=70?'#8a5c00':'#c0392b'};">${k.psqs}/100</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(k.psqs,getKPIS(1,'goodT'),getKPIS(1,'warnT'),getKPIS(1,'invert')))};">${k.psqs}/100</span>
       ${ragPill(kpiRag(k.psqs,getKPIS(1,'goodT'),getKPIS(1,'warnT'),getKPIS(1,'invert')))}
     </div>` : '';
     return avg + tableWrap(
@@ -4011,7 +4062,7 @@ function buildKPIDetailHTML(num, p, k) {
     });
     const overall = k.fscr !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">First Submission Completeness Rate:</span>
-      <span style="font-size:20px;font-weight:800;color:${k.fscr>=90?'#1a7a4a':k.fscr>=70?'#8a5c00':'#c0392b'};">${k.fscr}%</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(k.fscr,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))};">${k.fscr}%</span>
       ${ragPill(kpiRag(k.fscr,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))}
     </div>` : '';
     return overall + tableWrap(
@@ -4067,7 +4118,7 @@ function buildKPIDetailHTML(num, p, k) {
     let rows = '';
     pairs.forEach(({pkgKey, subKey, label}) => {
       const events  = p.stageDocs?.[pkgKey]?.reviewEvents || [];
-      const firstSub = events.find(e => e.type==='submission' && !e.isNonGaca && e.date);
+      const firstSub = events.find(e => e.type==='submission' && !e.isNonGaca && !e.isPartial && e.date);
       const log     = p.stageDocs?.[subKey]?.submissionLog || [];
       const gacaFirst = log.filter(r=>r.dateSubmitted).sort((a,b)=>new Date(a.dateSubmitted)-new Date(b.dateSubmitted))[0];
       const days    = firstSub?.date && gacaFirst?.dateSubmitted
@@ -4119,7 +4170,7 @@ function buildKPIDetailHTML(num, p, k) {
     });
     const overall = total > 0 ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">Acceptance Rate: ${accepted}/${total} rounds accepted</span>
-      <span style="font-size:20px;font-weight:800;color:${Math.round(accepted/total*100)>=95?'#1a7a4a':Math.round(accepted/total*100)>=80?'#8a5c00':'#c0392b'};">${Math.round(accepted/total*100)}%</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(Math.round(accepted/total*100),getKPIS(6,'goodT'),getKPIS(6,'warnT'),getKPIS(6,'invert')))};">${Math.round(accepted/total*100)}%</span>
       ${ragPill(kpiRag(Math.round(accepted/total*100),getKPIS(6,'goodT'),getKPIS(6,'warnT'),getKPIS(6,'invert')))}
     </div>` : '';
     return overall + tableWrap(
@@ -4133,7 +4184,7 @@ function buildKPIDetailHTML(num, p, k) {
   if (num === 7) {
     let rows = '', allDays = [];
     PKG.forEach(({key, label}) => {
-      const events = p.stageDocs?.[key]?.reviewEvents || [];
+      const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
       for (let i=0; i<events.length-1; i++) {
         if (events[i].type==='submission' && events[i+1].type==='response'
             && events[i].date && events[i+1].date) {
@@ -4155,7 +4206,7 @@ function buildKPIDetailHTML(num, p, k) {
     const avg = allDays.length ? Math.round(allDays.reduce((a,b)=>a+b,0)/allDays.length) : null;
     const overall = avg !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">Average RAC-AIMO review time:</span>
-      <span style="font-size:20px;font-weight:800;color:${avg<=14?'#1a7a4a':avg<=21?'#8a5c00':'#c0392b'};">${avg} days</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(avg,getKPIS(7,'goodT'),getKPIS(7,'warnT'),getKPIS(7,'invert')))};">${avg} days</span>
       ${ragPill(kpiRag(avg,getKPIS(7,'goodT'),getKPIS(7,'warnT'),getKPIS(7,'invert')))}
     </div>` : '';
     return overall + tableWrap(
@@ -4167,16 +4218,13 @@ function buildKPIDetailHTML(num, p, k) {
 
   // ── KPI 8: CCR — Comment Close Rate ──────────────────────────────────────
   if (num === 8) {
-    let rows = '', allRaised = 0, allClosed = 0;
+    let rows = '';
     PKG.forEach(({key, label}) => {
       const events = p.stageDocs?.[key]?.reviewEvents || [];
-      let stageRaised = 0, stageClosed = 0;
       events.forEach(ev => {
         const raised  = ev.commentsRaised  || 0;
         const closed  = ev.commentsClosed  || 0;
         if (!raised && !closed) return;
-        stageRaised += raised; stageClosed += closed;
-        allRaised   += raised; allClosed   += closed;
         const pct = raised > 0 ? Math.round((closed/raised)*100) : null;
         rows += `<tr>
           <td style="${tdS}">${esc(label)}</td>
@@ -4188,17 +4236,29 @@ function buildKPIDetailHTML(num, p, k) {
         </tr>`;
       });
     });
+    // M7: headline total sourced from the doc register (docList), same source KREI's Correct
+    // Closure component uses — the per-event table above still shows each round's own
+    // reviewEvents-sourced counts for reference, but no longer feeds the headline % so it
+    // can't silently disagree with KREI's figure for the same underlying comments.
+    let allRaised = 0, allClosed = 0;
+    PKG.forEach(({key}) => {
+      (p.stageDocs?.[key]?.docList || []).forEach(d => {
+        if (!d.enabled) return;
+        allRaised += d.commentsRaised || 0;
+        allClosed += d.commentsClosed || 0;
+      });
+    });
     const overall = allRaised > 0 ? Math.round((allClosed/allRaised)*100) : null;
     const overallEl = overall !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">Overall Comment Close Rate:</span>
-      <span style="font-size:20px;font-weight:800;color:${overall>=85?'#1a7a4a':overall>=70?'#8a5c00':'#c0392b'};">${overall}%</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(overall,getKPIS(8,'goodT'),getKPIS(8,'warnT'),getKPIS(8,'invert')))};">${overall}%</span>
       <span style="font-size:12px;color:var(--text-3);">${allClosed} of ${allRaised} comments resolved</span>
       ${ragPill(kpiRag(overall,getKPIS(8,'goodT'),getKPIS(8,'warnT'),getKPIS(8,'invert')))}
     </div>` : '';
     return overallEl + tableWrap(
       [{h:'Stage'},{h:'Date'},{h:'Event'},{h:'Raised',right:true},{h:'Closed',right:true},{h:'Close Rate',right:true}],
       rows,
-      'Comment counts are sourced from CRS uploads on each review event. "Close Rate" per event = commentsClosed / commentsRaised for that event. Target: ≥ 85% overall.'
+      'Overall Comment Close Rate is sourced from the CRS document register (docList) — the same figures as the KREI scorecard\'s Correct Closure component. The table below shows each review round\'s own submitted comment counts for reference; per-row "Close Rate" is that event\'s own commentsClosed / commentsRaised, not part of the overall figure above. Target: ≥ 85% overall.'
     );
   }
 
@@ -4231,7 +4291,7 @@ function buildKPIDetailHTML(num, p, k) {
     const overall = allRaised > 0 ? Math.round((allCD/allRaised)*100) : null;
     const overallEl = overall !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">Overall C/D Major Finding Ratio:</span>
-      <span style="font-size:20px;font-weight:800;color:${overall<=25?'#1a7a4a':overall<=40?'#8a5c00':'#c0392b'};">${overall}%</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(overall,getKPIS(9,'goodT'),getKPIS(9,'warnT'),getKPIS(9,'invert')))};">${overall}%</span>
       <span style="font-size:12px;color:var(--text-3);">${allCD} major findings of ${allRaised} total comments</span>
       ${ragPill(kpiRag(overall,getKPIS(9,'goodT'),getKPIS(9,'warnT'),getKPIS(9,'invert')))}
     </div>` : '';
@@ -4270,7 +4330,7 @@ function buildOverviewHTML(p) {
     if (done) {
       dotCls='done'; sc='is-done';
     } else if (isActive && effForecast) {
-      const isOverdue = today > new Date(effForecast);
+      const isOverdue = isPastDue(effForecast);
       const hasSlip   = d.baseline && d.planned && new Date(d.planned) > new Date(d.baseline);
       if (isOverdue)       { dotCls='late';         sc='is-late'; }
       else if (hasSlip)    { dotCls='expect-delay';  sc='is-expect-delay'; }
@@ -4584,14 +4644,19 @@ function buildOverviewHTML(p) {
 
   // ── Governance actions panel (project-specific) ──
   const projActions = (govState.actions||[]).filter(a => a.linkedProject === p.id);
-  const openProjActions  = projActions.filter(a => a.status==='open');
+  // M8: count everything not closed (matches isDateBreached's own definition of breachable),
+  // not just strictly status==='open' — an escalated/steering action was dropping out of this
+  // "N open" badge even though it's still an active, un-closed action.
+  const openProjActions  = projActions.filter(a => a.status!=='closed');
   const closedProjActions = projActions.filter(a => a.status==='closed');
   let govActionsPanel = '';
   if (projActions.length) {
-    const today0 = new Date().toISOString().slice(0,10);
     const priCls = {high:'pri-high', medium:'pri-medium', low:'pri-low'};
     const rows = projActions.map(a => {
-      const breach = a.targetDate && a.status==='open' && a.targetDate < today0;
+      // M8: use the same isDateBreached() the Governance view uses — this inline check only
+      // flagged status==='open', so an escalated/steering action past its target date showed
+      // breached in Governance but not here on the project's own Overview panel.
+      const breach = isDateBreached(a.targetDate, a.status);
       const pc = priCls[a.priority||'medium'];
       return `<tr style="cursor:pointer;" onclick="window.__govJump('${a.id}')">
         <td style="width:76px;"><span class="pri-badge ${pc}">${(a.priority||'medium').charAt(0).toUpperCase()+(a.priority||'medium').slice(1)}</span></td>
@@ -5651,7 +5716,7 @@ function saveProject() {
     const idx=state.projects.findIndex(p=>p.id===editId);
     if(idx>=0){state.projects[idx]={...state.projects[idx],...base,updatedAt:now};}
   } else {
-    state.projects.unshift({id:'p_'+Date.now(),createdAt:now,updatedAt:now,stageDocs:{},...base});
+    state.projects.unshift({id:'p_'+Date.now()+'_'+Math.random().toString(36).slice(2),createdAt:now,updatedAt:now,stageDocs:{},...base});
   }
   // Save planned construction schedule dates into stageDocs.project_execution.phases[key] —
   // the same nested shape savePhaseField/the schedule table/executive report all read from.
@@ -6953,7 +7018,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
   if (lastRec && freqDays) {
     const d = new Date(lastRec.date); d.setDate(d.getDate() + freqDays);
     nextDue = d.toISOString().slice(0,10);
-    nextDueOverdue = nextDue < new Date().toISOString().slice(0,10);
+    nextDueOverdue = isPastDue(nextDue);
   }
   const vlRows = vlRecs.map((r, ri) => {
     const tot = r.hazardsTotal || 0;
@@ -7117,7 +7182,7 @@ function addObs(stageKey, team='safety') {
   const p = state.projects.find(x=>x.id===state.selectedId); if(!p) return;
   const sd = ensureStageDocs(p, stageKey);
   if(!sd.observations) sd.observations=[];
-  sd.observations.push({id:'obs_'+Date.now(),dateReport:'',dateObservation:'',details:'',actionTaken:'',correctivePlan:'',linkedHazard:'',status:'open',dateClosed:'',newHazardCreated:false,raisedBy:team});
+  sd.observations.push({id:'obs_'+Date.now()+'_'+Math.random().toString(36).slice(2),dateReport:'',dateObservation:'',details:'',actionTaken:'',correctivePlan:'',linkedHazard:'',status:'open',dateClosed:'',newHazardCreated:false,raisedBy:team});
   saveProjects();
   const subTab = team==='operations' ? 'operations' : team==='engineering' ? 'engineering' : 'safety';
   execSubTab[stageKey] = subTab;
@@ -7149,7 +7214,10 @@ function updateObs(stageKey, obsId, field, value) {
   const sd = ensureStageDocs(p, stageKey);
   const ob=(sd.observations||[]).find(o=>o.id===obsId); if(!ob) return;
   ob[field]=value;
-  saveProjects();
+  // M4: this is oninput-bound (fires every keystroke) and the full projects array can include
+  // base64 photo data URLs — a synchronous saveProjects() per keystroke was a multi-megabyte
+  // localStorage write on every character typed.
+  debouncedSave();
 }
 
 function obsStatusChanged(stageKey, obsId, newStatus) {
@@ -7169,7 +7237,7 @@ function stAddObs(projectId, stageKey) {
   const p = state.projects.find(x=>x.id===projectId); if(!p) return;
   const sd = ensureStageDocs(p, stageKey);
   if(!sd.observations) sd.observations=[];
-  sd.observations.push({id:'obs_'+Date.now(),dateReport:'',dateObservation:'',details:'',actionTaken:'',correctivePlan:'',linkedHazard:'',status:'open',dateClosed:'',newHazardCreated:false,raisedBy:'safety'});
+  sd.observations.push({id:'obs_'+Date.now()+'_'+Math.random().toString(36).slice(2),dateReport:'',dateObservation:'',details:'',actionTaken:'',correctivePlan:'',linkedHazard:'',status:'open',dateClosed:'',newHazardCreated:false,raisedBy:'safety'});
   saveProjects();
   renderSafetyView();
 }
@@ -8483,7 +8551,7 @@ function addReviewEvent(stageKey, type) {
   const _prevB=(sd.reviewEvents||[]).filter(e=>e.type==='response').reduce((s,e)=>s+(e.classBRaised||0),0);
   const _prevC=(sd.reviewEvents||[]).filter(e=>e.type==='response').reduce((s,e)=>s+(e.classCRaised||0),0);
   const _prevD=(sd.reviewEvents||[]).filter(e=>e.type==='response').reduce((s,e)=>s+(e.classDRaised||0),0);
-  sd.reviewEvents.push({id:'rev_'+Date.now(),type:type||'submission',date:'',isPartial:false,notes:'',crsRef:'',
+  sd.reviewEvents.push({id:'rev_'+Date.now()+'_'+Math.random().toString(36).slice(2),type:type||'submission',date:'',isPartial:false,notes:'',crsRef:'',
     commentsRaised:type==='response'?Math.max(0,_autoRaised-_prevRaised):0,
     classBRaised:type==='response'?Math.max(0,_autoB-_prevB):0,
     classCRaised:type==='response'?Math.max(0,_autoC-_prevC):0,
@@ -8588,7 +8656,7 @@ function addSubRound(stageKey) {
   const p=state.projects.find(x=>x.id===state.selectedId); if(!p) return;
   const sd=ensureStageDocs(p,stageKey);
   if(!sd.submissionLog) sd.submissionLog=[];
-  sd.submissionLog.push({id:'sr_'+Date.now(),dateCandC:'',dateSubmitted:'',responseDate:'',status:'pending_gaca',notes:'',commentsRaised:0,commentsClosed:0,gacaComments:[]});
+  sd.submissionLog.push({id:'sr_'+Date.now()+'_'+Math.random().toString(36).slice(2),dateCandC:'',dateSubmitted:'',responseDate:'',status:'pending_gaca',notes:'',commentsRaised:0,commentsClosed:0,gacaComments:[]});
   deriveAndSave(p);
   state.activeTab=stageKey;
   document.getElementById('tabContent').innerHTML=buildDocTabHTML(p,stageKey);
@@ -8605,7 +8673,7 @@ function updateStageDate(stageKey, field, value) {
   const p=state.projects.find(x=>x.id===state.selectedId); if(!p) return;
   const sd=ensureStageDocs(p,stageKey);
   sd[field]=value;
-  deriveAndSave(p);
+  debouncedDeriveAndSave(p);
 }
 
 function toggleRoundComments(roundId) {
@@ -8617,7 +8685,7 @@ function addGacaComment(stageKey, roundId) {
   const sd=ensureStageDocs(p,stageKey);
   const r=(sd.submissionLog||[]).find(x=>x.id===roundId); if(!r) return;
   if(!r.gacaComments) r.gacaComments=[];
-  r.gacaComments.push({id:'gc_'+Date.now(),comment:'',type:'action_required',assignedTo:'',status:'open',dateRaised:r.responseDate||'',dateClosed:'',docRef:''});
+  r.gacaComments.push({id:'gc_'+Date.now()+'_'+Math.random().toString(36).slice(2),comment:'',type:'action_required',assignedTo:'',status:'open',dateRaised:r.responseDate||'',dateClosed:'',docRef:''});
   saveProjects();
   document.getElementById('tabContent').innerHTML=buildDocTabHTML(p,stageKey);
   const row=document.getElementById('cmts-'+roundId);
@@ -9155,7 +9223,7 @@ function confirmCrsUpload() {
   const p=state.projects.find(x=>x.id===state.selectedId); if(!p) return;
   const sd=ensureStageDocs(p,stageKey);
   if(!sd.crsHistory) sd.crsHistory=[];
-  sd.crsHistory.push({id:'rev_'+Date.now(),direction,date,filename,comments:parsed.comments});
+  sd.crsHistory.push({id:'rev_'+Date.now()+'_'+Math.random().toString(36).slice(2),direction,date,filename,comments:parsed.comments});
   // Rebuild docList from this revision's metrics
   const newDocList=Object.entries(parsed.docMetrics).map(([label,m],i)=>({
     key:'crs_'+i+'_'+Date.now(),label,enabled:true,
@@ -9907,7 +9975,12 @@ function deriveMilestoneDates(p) {
   // ── 2. GACA Design Submission ───────────────────────────────────────────────
   // Actual = first round's dateSubmitted in gaca_design_submission.submissionLog
   const designLog = sd('gaca_design_submission').submissionLog || [];
-  const firstDesignSub = (designLog[0] && (designLog[0].dateSubmitted || designLog[0].dateCandC)) || null;
+  // L10: "first round" by actual date, not array position — rounds entered out of order
+  // previously gave this milestone a different first-submission date than KPI 5 uses (which
+  // already sorts by dateSubmitted). Sort a copy; never mutate the stored log.
+  const sortedDesignLog = designLog.filter(r => r.dateSubmitted || r.dateCandC)
+    .sort((a, b) => (a.dateSubmitted || a.dateCandC).localeCompare(b.dateSubmitted || b.dateCandC));
+  const firstDesignSub = (sortedDesignLog[0] && (sortedDesignLog[0].dateSubmitted || sortedDesignLog[0].dateCandC)) || null;
   apply('gaca_design_submission', 'actual', firstDesignSub, 'GACA Design Submission → Actual (First Submission)');
 
   // ── 3. GACA Design Acceptance ───────────────────────────────────────────────
@@ -10082,6 +10155,25 @@ function deriveAndSave(p) {
   cascadeForecastDates(p);
   saveProjects();
   if (changes.length) showDeriveToast(changes);
+}
+// M4: debounced variant for oninput-bound callers (e.g. updateStageDate) — deriveAndSave()
+// itself stays synchronous for discrete-action callers (add/delete row, checkbox toggle,
+// import) where an immediate save + toast is expected.
+let _deriveAndSaveTimer = null;
+let _deriveAndSavePending = null;
+function debouncedDeriveAndSave(p) {
+  clearTimeout(_deriveAndSaveTimer);
+  _deriveAndSavePending = p;
+  _deriveAndSaveTimer = setTimeout(() => { _deriveAndSaveTimer = null; _deriveAndSavePending = null; deriveAndSave(p); }, 600);
+}
+function _flushPendingDeriveAndSave() {
+  if (_deriveAndSaveTimer) {
+    clearTimeout(_deriveAndSaveTimer);
+    _deriveAndSaveTimer = null;
+    const p = _deriveAndSavePending;
+    _deriveAndSavePending = null;
+    if (p) deriveAndSave(p);
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -10423,7 +10515,7 @@ function buildGanttHTML(p) {
       const sx=sEff?rd2xC(sEff):null, ex=eEff?rd2xC(eEff):null;
       const sBx=ds.baseline?rd2x(ds.baseline):null, eBx=de.baseline?rd2x(de.baseline):null;
       const sAx=ds.actual?rd2x(ds.actual):null, eAx=de.actual?rd2x(de.actual):null;
-      const bothDone=!!ds.actual&&!!de.actual, isOverdue=!de.actual&&eEff&&new Date(eEff)<today;
+      const bothDone=!!ds.actual&&!!de.actual, isOverdue=!de.actual&&eEff&&isPastDue(eEff);
       const barColor=bothDone?'#0AAA6E':isOverdue?'#C8302C':'#1D72E8';
       if(sx!==null&&ex!==null&&ex>sx){
         rowsSVG+=`<rect x="${sx.toFixed(1)}" y="${(cy-5).toFixed(1)}" width="${(ex-sx).toFixed(1)}" height="10" rx="5" fill="${barColor}" opacity="${bothDone?0.75:0.15}"/>`;
@@ -11294,7 +11386,7 @@ function vpRecordCheck() {
     verifiedBy: h.verifiedBy || '',
   }));
   const record = {
-    id: 'vl_' + Date.now(),
+    id: 'vl_' + Date.now() + '_' + Math.random().toString(36).slice(2),
     date: rr.verifSession?.date || new Date().toISOString().slice(0,10),
     verifier: rr.verifSession?.verifier || '',
     mocRef: rr.verifSession?.mocRef || '',
@@ -11377,7 +11469,13 @@ if (_vpParams.get('verify')) {
   (function(){const el=document.getElementById('appVersionBadge');if(el)el.textContent=APP_VERSION+' · '+APP_DATE;})();
   (function(){const el=document.getElementById('fbFab');if(el&&!FEEDBACK_ENDPOINT)el.classList.add('hidden');})();
   // Direct callback for verify-page tab to call via window.opener
+  // M1: flush any pending debounced local save before reloading from storage — without this,
+  // up to 600ms of local edits sitting only in `state.projects` (not yet in localStorage) get
+  // silently discarded the moment loadProjects() overwrites `state.projects` from whatever the
+  // verify pop-out (or another tab) just wrote.
+  function _flushPendingSave() { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } }
   window.aimoRefresh = function() {
+    _flushPendingSave();
     loadProjects();
     if (state.selectedId) renderProjectDetail();
     renderSidebar();
@@ -11387,6 +11485,7 @@ if (_vpParams.get('verify')) {
     const _mainBC = new BroadcastChannel('aimo_tracker');
     _mainBC.addEventListener('message', e => {
       if (e.data.type !== 'verify_updated') return;
+      _flushPendingSave();
       loadProjects();
       if (state.selectedId === e.data.projectId) renderProjectDetail();
       renderSidebar();
@@ -11396,6 +11495,7 @@ if (_vpParams.get('verify')) {
   // Storage event (works in some browsers cross-tab even on file://)
   window.addEventListener('storage', e => {
     if (e.key !== STORAGE_KEY && e.key !== '_aimo_sync') return;
+    _flushPendingSave();
     loadProjects();
     if (state.selectedId) renderProjectDetail();
     renderSidebar();
@@ -11416,6 +11516,7 @@ if (_vpParams.get('verify')) {
     const cur = localStorage.getItem('_aimo_sync');
     if (cur !== _lastSyncVal) {
       _lastSyncVal = cur;
+      _flushPendingSave();
       loadProjects();
       if (state.selectedId) renderProjectDetail();
       renderSidebar();
@@ -11668,7 +11769,7 @@ async function exportPortfolioReport() {
       const _msPts=MILESTONES.map(m=>{
         const v=p.milestones?.[m.key]||{};
         const dateStr=v.actual||v.planned||null;
-        return {key:m.key,x:_d2x(dateStr),actual:!!v.actual,planned:!!v.planned,overdue:!v.actual&&v.planned&&new Date()>new Date(v.planned),date:dateStr};
+        return {key:m.key,x:_d2x(dateStr),actual:!!v.actual,planned:!!v.planned,overdue:!v.actual&&v.planned&&isPastDue(v.planned),date:dateStr};
       }).filter(m=>m.x!==null&&m.x>=_ganttLeft&&m.x<=_ganttRight);
 
       // Connecting bar (first to last visible ms)
@@ -12098,39 +12199,12 @@ function mocStatusPill(status) {
   return `<span class="moc-status-pill" style="background:${s.bg};color:${s.color};">${l}</span>`;
 }
 
-function setSafetySubTab(tab) {
-  stSafetySubTab = tab;
-  renderSafetyView();
-}
-
-function setSafetyProject(pid) {
-  stSafetyProjectId = pid;
-  stSafetyMocId = null; // reset MOC selection when project changes
-  if (stSafetySubTab === 'overview') stSafetySubTab = 'moc';
-  renderSafetyView();
-}
-
-function setSafetyMoc(mid) {
-  stSafetyMocId = mid;
-  renderSafetyView();
-}
-
-function toggleMocSection(mid, sec) {
-  const key = mid + '_' + sec;
-  mocSectionCollapsed[key] = !mocSectionCollapsed[key];
-  const body = document.getElementById('moc-sec-' + mid + '-' + sec);
-  const icon = document.getElementById('moc-sec-icon-' + mid + '-' + sec);
-  if (body) body.style.display = mocSectionCollapsed[key] ? 'none' : '';
-  if (icon) icon.style.transform = mocSectionCollapsed[key] ? 'rotate(-90deg)' : '';
-}
-
 // Safety tracking (MOC records, Risk Verification, Observations) now lives in
 // the dedicated AIMO Safety Tracker app — this tab just points there instead
 // of maintaining a second, unmaintained copy of that functionality. Per
 // owner feedback (Notion Feedback Inbox, 01 Aug 2026). The old sub-tab
-// builders (buildSafetyOverview/MOC/Verification/Observations) are left
-// defined but unused below rather than deleted outright, in case any of
-// that logic is wanted again later.
+// builders and their setSafety*/toggleMocSection handlers were deleted
+// (L13, 04 Aug 2026) — git history has them if that logic is wanted again.
 function renderSafetyView() {
   const el = document.getElementById('safetyView');
   if (!el) return;
@@ -12148,512 +12222,6 @@ function renderSafetyView() {
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       </a>
     </div>`;
-}
-
-function buildSafetyProjectBar() {
-  const opts = state.projects.map(p =>
-    `<option value="${esc(p.id)}" ${p.id===stSafetyProjectId?'selected':''}>${esc(p.name)}</option>`
-  ).join('');
-  return `<div class="safety-proj-bar">
-    <span class="safety-proj-label">Project</span>
-    <select class="safety-proj-sel" onchange="setSafetyProject(this.value)">
-      <option value="">— Select project —</option>
-      ${opts}
-    </select>
-  </div>`;
-}
-
-/* ── OVERVIEW: all MOCs across all projects ── */
-function buildSafetyOverview() {
-  const allMocs = [];
-  state.projects.forEach(p => {
-    (p.mocs || []).forEach(m => allMocs.push({ ...m, _project: p }));
-  });
-
-  const totalMocs    = allMocs.length;
-  const accepted     = allMocs.filter(m => m.status === 'accepted' || m.status === 'conditional').length;
-  const underReview  = allMocs.filter(m => m.status === 'under_review').length;
-  const open         = allMocs.filter(m => m.status !== 'closed' && m.status !== 'rejected').length;
-
-  const statsBar = `<div class="doc-summary" style="margin-bottom:20px;grid-template-columns:repeat(4,1fr);">
-    <div class="doc-stat"><div class="doc-stat-val">${totalMocs||'—'}</div><div class="doc-stat-lbl">Total MOCs</div></div>
-    <div class="doc-stat"><div class="doc-stat-val" style="color:#e07b00;">${open||'—'}</div><div class="doc-stat-lbl">Active</div></div>
-    <div class="doc-stat"><div class="doc-stat-val" style="color:var(--amber);">${underReview||'—'}</div><div class="doc-stat-lbl">Under Review</div></div>
-    <div class="doc-stat"><div class="doc-stat-val" style="color:var(--green);">${accepted||'—'}</div><div class="doc-stat-lbl">Accepted</div></div>
-  </div>`;
-
-  if (!allMocs.length) {
-    return statsBar + `<div style="text-align:center;padding:50px;color:var(--text-3);font-size:13px;border:1.5px dashed var(--border);border-radius:10px;">
-      No MOCs yet. Select a project from Management of Change to add one.
-    </div>`;
-  }
-
-  const rows = allMocs.map(m => {
-    const proj = m._project;
-    const rr = Object.values(proj.stageDocs || {}).find(sd => sd?.mocs?.some?.(x=>x.id===m.id) || proj.mocs?.find(x=>x.id===m.id));
-    const hasRA = Object.values(proj.stageDocs || {}).some(sd => sd?.riskRegister?.hazards?.length);
-    return `<tr onclick="setSafetyProjectAndMoc('${proj.id}','${m.id}')" style="cursor:pointer;">
-      <td><div style="font-weight:700;font-size:13px;color:var(--text-1);">${esc(m.mocRef||'—')}</div>
-          <div style="font-size:11px;color:var(--text-3);">${m.isAddendum?'Supplementary/Addendum':'Primary MOC'}</div></td>
-      <td>${esc(proj.name||'')}</td>
-      <td style="font-size:12px;">${esc(m.requestDate||'—')}</td>
-      <td style="font-size:12px;">${esc(m.implementDate||'—')}</td>
-      <td><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:${m.temporary==='temporary'?'rgba(59,130,250,.12)':'rgba(26,122,74,.12)'};color:${m.temporary==='temporary'?'#3b88fa':'var(--green)'};">${m.temporary==='temporary'?'Temporary':'Permanent'}</span></td>
-      <td>${mocStatusPill(m.status||'draft')}</td>
-      <td style="font-size:11px;color:var(--text-3);">${esc((m.changeType||[]).map(t=>({organizational:'Org.',process:'Process',infrastructure:'Infra.',system:'System',other:'Other'})[t]||t).join(', ')||'—')}</td>
-      <td><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();setSafetyProjectAndMoc('${proj.id}','${m.id}')">Open →</button></td>
-    </tr>`;
-  }).join('');
-
-  return statsBar + `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-    <div class="sec-label" style="flex:1;">All Management of Change Records</div>
-  </div>
-  <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;">
-    <table class="moc-overview-table">
-      <thead><tr>
-        <th>MOC Reference</th><th>Project</th><th>Request Date</th><th>Impl. Date</th>
-        <th>Type</th><th>Status</th><th>Change Category</th><th style="width:70px;"></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>`;
-}
-
-function setSafetyProjectAndMoc(pid, mocId) {
-  stSafetyProjectId = pid;
-  stSafetyMocId = mocId;
-  stSafetySubTab = 'moc';
-  renderSafetyView();
-}
-
-/* ── MANAGEMENT OF CHANGE sub-tab ── */
-function buildSafetyMOC(p) {
-  const mocs = p.mocs || [];
-  const stageKeys = Object.keys(p.stageDocs || {});
-  const stageOpts = stageKeys.map(sk => `<option value="${esc(sk)}">${esc(sk)}</option>`).join('');
-  const pid = esc(p.id);
-
-  // Auto-select first MOC if none selected or selected MOC doesn't exist in this project
-  if (!stSafetyMocId || !mocs.find(m => m.id === stSafetyMocId)) {
-    stSafetyMocId = mocs.length ? mocs[0].id : null;
-  }
-
-  // MOC selector bar (dropdown + actions)
-  const mocSelectorOpts = mocs.map(m =>
-    `<option value="${esc(m.id)}" ${m.id===stSafetyMocId?'selected':''}>${esc(m.mocRef||'Untitled MOC')} — ${MOC_STATUS_LABELS[m.status||'draft']||'Draft'}</option>`
-  ).join('');
-
-  const selectorBar = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-    <span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">MOC Record</span>
-    ${mocs.length ? `<select class="safety-proj-sel" style="flex:1;max-width:420px;" onchange="setSafetyMoc(this.value)">${mocSelectorOpts}</select>` : '<span style="flex:1;font-size:12px;color:var(--text-3);">No records yet</span>'}
-    <div style="display:flex;gap:6px;margin-left:auto;">
-      <button class="btn btn-ghost btn-xs" onclick="triggerMocFileInput('${pid}')" title="Import CRF .docx">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Import CRF
-      </button>
-      <button class="btn btn-primary btn-xs" onclick="addMoc('${pid}')">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New MOC
-      </button>
-    </div>
-  </div>`;
-
-  if (!mocs.length) {
-    return selectorBar + `<div class="st-import-box" onclick="triggerMocFileInput('${pid}')">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block;margin:0 auto 10px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-      <div style="font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:4px;">Import Change Request Form</div>
-      <div style="font-size:11.5px;color:var(--text-3);">Upload a CRF .docx to auto-populate fields, or click "New MOC" to create manually.</div>
-    </div>`;
-  }
-
-  // Only render the selected MOC card
-  const m = mocs.find(x => x.id === stSafetyMocId) || mocs[0];
-  return selectorBar + buildMocCard(p, m, stageOpts);
-}
-
-function buildMocCard(p, m, stageOpts) {
-  const fld = (label, key, type='text', opts='') => {
-    const val = esc(m[key]||'');
-    const inp = type === 'textarea'
-      ? `<textarea oninput="saveMocField('${p.id}','${m.id}','${key}',this.value)">${val}</textarea>`
-      : type === 'select'
-      ? `<select onchange="saveMocField('${p.id}','${m.id}','${key}',this.value)">${opts}</select>`
-      : `<input type="${type}" value="${val}" oninput="saveMocField('${p.id}','${m.id}','${key}',this.value)">`;
-    return `<div class="moc-field"><label>${label}</label>${inp}</div>`;
-  };
-
-  const chkType = (val, label) => {
-    const checked = (m.changeType||[]).includes(val) ? 'checked' : '';
-    return `<label class="moc-check-item"><input type="checkbox" ${checked} onchange="toggleMocCheckArr('${p.id}','${m.id}','changeType','${val}',this.checked)"> ${label}</label>`;
-  };
-  const chkUrgency = (val, label) => {
-    const checked = (m.urgency||[]).includes(val) ? 'checked' : '';
-    return `<label class="moc-check-item"><input type="checkbox" ${checked} onchange="toggleMocCheckArr('${p.id}','${m.id}','urgency','${val}',this.checked)"> ${label}</label>`;
-  };
-  const radio = (key, val, label) => {
-    const checked = m[key] === val ? 'checked' : '';
-    return `<label class="moc-check-item"><input type="radio" name="${m.id}-${key}" value="${val}" ${checked} onchange="saveMocField('${p.id}','${m.id}','${key}',this.value)"> ${label}</label>`;
-  };
-
-  // Requesters
-  const requesters = m.requesters || [];
-  const reqRows = requesters.map((r, ri) => `
-    <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;position:relative;">
-      <button class="doc-del-btn" style="position:absolute;top:8px;right:8px;" onclick="deleteMocRequester('${p.id}','${m.id}',${ri})">×</button>
-      <div class="moc-form-grid">
-        <div class="moc-field"><label>Name</label><input type="text" value="${esc(r.name||'')}" oninput="saveMocRequester('${p.id}','${m.id}',${ri},'name',this.value)"></div>
-        <div class="moc-field"><label>Title</label><input type="text" value="${esc(r.title||'')}" oninput="saveMocRequester('${p.id}','${m.id}',${ri},'title',this.value)"></div>
-        <div class="moc-field"><label>Organization</label><input type="text" value="${esc(r.org||'')}" oninput="saveMocRequester('${p.id}','${m.id}',${ri},'org',this.value)"></div>
-        <div class="moc-field"><label>Phone</label><input type="text" value="${esc(r.phone||'')}" oninput="saveMocRequester('${p.id}','${m.id}',${ri},'phone',this.value)"></div>
-        <div class="moc-field" style="grid-column:span 2;"><label>Email</label><input type="email" value="${esc(r.email||'')}" oninput="saveMocRequester('${p.id}','${m.id}',${ri},'email',this.value)"></div>
-      </div>
-    </div>`).join('');
-
-  // Stage key selector
-  const skOpts = `<option value="">— Not linked —</option>` + Object.keys(p.stageDocs||{}).map(sk => `<option value="${esc(sk)}" ${m.linkedStageKey===sk?'selected':''}>${esc(sk)}</option>`).join('');
-
-  // Addendum options: other MOCs in this project
-  const parentOpts = `<option value="">— Primary MOC —</option>` + (p.mocs||[]).filter(x=>x.id!==m.id).map(x=>`<option value="${esc(x.id)}" ${m.parentMocId===x.id?'selected':''}>${esc(x.mocRef||x.id)}</option>`).join('');
-
-  // Decision options
-  const reviewFreqOpts = ['monthly','quarterly','bi-annually','annually','as-required'].map(f => `<option value="${f}" ${m.reviewFrequency===f?'selected':''}>${f.charAt(0).toUpperCase()+f.slice(1)}</option>`).join('');
-  const statusOpts = Object.entries(MOC_STATUS_LABELS).map(([v,l])=>`<option value="${v}" ${(m.status||'draft')===v?'selected':''}>${l}</option>`).join('');
-  const _aDecLbl  = {'':'— Decision —','accepted':'Accepted','rejected':'Rejected','conditional':'Conditional'};
-  const _apDecLbl = {'':'— Decision —','approved':'Approved','rejected':'Rejected'};
-  const acceptDecOpts  = ['','accepted','rejected','conditional'].map(v=>`<option value="${v}" ${(m.accepter?.decision||'')===v?'selected':''}>${_aDecLbl[v]}</option>`).join('');
-  const approveDecOpts = ['','approved','rejected'].map(v=>`<option value="${v}" ${(m.approver?.decision||'')===v?'selected':''}>${_apDecLbl[v]}</option>`).join('');
-
-  // Helper to build a collapsible section
-  const sec = (key, title, bodyHtml) => {
-    const collapsed = !!mocSectionCollapsed[m.id + '_' + key];
-    const chevron = `<svg id="moc-sec-icon-${m.id}-${key}" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform .2s;flex-shrink:0;${collapsed?'transform:rotate(-90deg)':''}"><polyline points="6 9 12 15 18 9"/></svg>`;
-    return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden;">
-      <div class="moc-section-hdr" style="margin:0;border-radius:0;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;" onclick="toggleMocSection('${m.id}','${key}')">
-        <span>${title}</span>${chevron}
-      </div>
-      <div id="moc-sec-${m.id}-${key}" style="padding:14px 16px;${collapsed?'display:none':''}">
-        ${bodyHtml}
-      </div>
-    </div>`;
-  };
-
-  return `<div class="moc-card" id="moc-card-${m.id}">
-    <div class="moc-card-hdr">
-      <div class="moc-card-title">${esc(m.mocRef||'Untitled MOC')}</div>
-      ${mocStatusPill(m.status||'draft')}
-      <button class="doc-del-btn" onclick="deleteMoc('${p.id}','${m.id}')" title="Delete MOC">×</button>
-    </div>
-
-    ${sec('identification','Identification',`
-      <div class="moc-form-grid">
-        <div class="moc-field"><label>MOC Reference</label><input type="text" value="${esc(m.mocRef||'')}" oninput="saveMocField('${p.id}','${m.id}','mocRef',this.value)"></div>
-        <div class="moc-field"><label>Overall Status</label><select onchange="saveMocStatus('${p.id}','${m.id}',this.value)">${statusOpts}</select></div>
-        <div class="moc-field"><label>Linked Stage / RA</label><select onchange="saveMocField('${p.id}','${m.id}','linkedStageKey',this.value)">${skOpts}</select></div>
-        <div class="moc-field"><label>MOC Type</label><select onchange="saveMocIsAddendum('${p.id}','${m.id}',this.value)">
-          <option value="false" ${!m.isAddendum?'selected':''}>Primary MOC</option>
-          <option value="true" ${m.isAddendum?'selected':''}>Supplementary / Addendum</option>
-        </select></div>
-        ${m.isAddendum ? `<div class="moc-field" style="grid-column:span 2;"><label>Parent MOC</label><select onchange="saveMocField('${p.id}','${m.id}','parentMocId',this.value)">${parentOpts}</select></div>` : ''}
-      </div>
-    `)}
-
-    ${sec('general','General Information',`
-      <div class="moc-form-grid" style="margin-bottom:10px;">
-        <div class="moc-field"><label>Request Date</label><input type="date" value="${esc(m.requestDate||'')}" oninput="saveMocField('${p.id}','${m.id}','requestDate',this.value)"></div>
-        <div class="moc-field"><label>Proposed Implementation Date</label><input type="date" value="${esc(m.implementDate||'')}" oninput="saveMocField('${p.id}','${m.id}','implementDate',this.value)"></div>
-      </div>
-      <div class="moc-field" style="margin-bottom:10px;"><label>Change Category</label>
-        <div class="moc-check-row" style="padding:8px 0;">
-          ${chkType('organizational','Organizational')}
-          ${chkType('process','Process and/or Procedures')}
-          ${chkType('infrastructure','Infrastructure')}
-          ${chkType('system','System')}
-          ${chkType('other','Other')}
-        </div>
-        ${(m.changeType||[]).includes('other')?`<input type="text" placeholder="Specify other…" value="${esc(m.changeTypeOther||'')}" oninput="saveMocField('${p.id}','${m.id}','changeTypeOther',this.value)" style="margin-top:6px;width:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-1);font-size:12.5px;font-family:inherit;">`:''}
-      </div>
-      <div style="display:flex;gap:24px;margin-bottom:12px;">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:6px;">Is the change</div>
-          <div class="moc-check-row">${radio('temporary','temporary','Temporary')} ${radio('temporary','permanent','Permanent')}</div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:6px;">Change Urgency</div>
-          <div class="moc-check-row">
-            ${chkUrgency('critical','Critical')}
-            ${chkUrgency('necessary','Necessary')}
-            ${chkUrgency('discretionary','Discretionary')}
-          </div>
-        </div>
-      </div>
-      <div class="moc-form-grid wide">
-        <div class="moc-field"><label>Description of the Change</label><textarea oninput="saveMocField('${p.id}','${m.id}','description',this.value)">${esc(m.description||'')}</textarea></div>
-        <div class="moc-field"><label>Objective of the Change</label><textarea oninput="saveMocField('${p.id}','${m.id}','objective',this.value)">${esc(m.objective||'')}</textarea></div>
-        <div class="moc-field"><label>Advantages of the Change</label><textarea oninput="saveMocField('${p.id}','${m.id}','advantages',this.value)">${esc(m.advantages||'')}</textarea></div>
-        <div class="moc-field"><label>Organizations and Affected Groups</label><textarea oninput="saveMocField('${p.id}','${m.id}','orgsAffected',this.value)">${esc(m.orgsAffected||'')}</textarea></div>
-        <div class="moc-field"><label>Infrastructures, Procedures and Equipment Affected</label><textarea oninput="saveMocField('${p.id}','${m.id}','infraAffected',this.value)">${esc(m.infraAffected||'')}</textarea></div>
-      </div>
-      <div style="display:flex;gap:24px;margin-top:10px;">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:6px;">Does change require regulator acceptance?</div>
-          <div class="moc-check-row">${radio('regulatorAcceptance','yes','Yes')} ${radio('regulatorAcceptance','no','No')}</div>
-        </div>
-      </div>
-    `)}
-
-    ${sec('requesters','Change Requester Team',`
-      <div class="moc-field" style="margin-bottom:12px;"><label>Change Team Leader</label><input type="text" value="${esc(m.teamLeader||'')}" oninput="saveMocField('${p.id}','${m.id}','teamLeader',this.value)"></div>
-      ${reqRows}
-      <button class="btn btn-ghost btn-xs" style="margin-top:4px;" onclick="addMocRequester('${p.id}','${m.id}')">+ Add Requester</button>
-    `)}
-
-    ${sec('impact','Safety Division — Impact Assessment',`
-      <div class="moc-form-grid wide">
-        <div class="moc-field"><label>Change Impact Assessment</label><textarea oninput="saveMocField('${p.id}','${m.id}','impactAssessment',this.value)">${esc(m.impactAssessment||'')}</textarea></div>
-      </div>
-      <div style="display:flex;gap:24px;margin:10px 0;">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:6px;">Requires review of system description / interfaces?</div>
-          <div class="moc-check-row">${radio('requiresSystemReview','yes','Yes')} ${radio('requiresSystemReview','no','No')}</div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:6px;">Will change affect existing mitigation controls?</div>
-          <div class="moc-check-row">${radio('affectsMitigations','yes','Yes')} ${radio('affectsMitigations','no','No')} ${radio('affectsMitigations','analysis','Analysis Required')}</div>
-        </div>
-      </div>
-      <div class="moc-form-grid wide" style="margin-bottom:12px;">
-        <div class="moc-field"><label>Who Should Be Involved</label><textarea oninput="saveMocField('${p.id}','${m.id}','involvedParties',this.value)">${esc(m.involvedParties||'')}</textarea></div>
-      </div>
-      <div class="moc-field" style="max-width:260px;"><label>Action Plan Review Frequency</label>
-        <select onchange="saveMocField('${p.id}','${m.id}','reviewFrequency',this.value)"><option value="">— Select —</option>${reviewFreqOpts}</select>
-      </div>
-    `)}
-
-    ${sec('review','Review, Acceptance & Approval',`
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:12px;">
-          <div style="font-size:11px;font-weight:700;color:#e07b00;margin-bottom:10px;">Change Reviewer</div>
-          <div class="moc-field"><label>Name</label><input type="text" value="${esc(m.reviewer?.name||'')}" oninput="saveMocNested('${p.id}','${m.id}','reviewer','name',this.value)"></div>
-          <div class="moc-field"><label>Title</label><input type="text" value="${esc(m.reviewer?.title||'')}" oninput="saveMocNested('${p.id}','${m.id}','reviewer','title',this.value)"></div>
-          <div class="moc-field"><label>Date</label><input type="date" value="${esc(m.reviewer?.date||'')}" oninput="saveMocNested('${p.id}','${m.id}','reviewer','date',this.value)"></div>
-          <div class="moc-field"><label>Comments</label><textarea oninput="saveMocNested('${p.id}','${m.id}','reviewer','comments',this.value)">${esc(m.reviewer?.comments||'')}</textarea></div>
-        </div>
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:12px;">
-          <div style="font-size:11px;font-weight:700;color:#e07b00;margin-bottom:10px;">Change Accepter</div>
-          <div class="moc-field"><label>Name</label><input type="text" value="${esc(m.accepter?.name||'')}" oninput="saveMocNested('${p.id}','${m.id}','accepter','name',this.value)"></div>
-          <div class="moc-field"><label>Title</label><input type="text" value="${esc(m.accepter?.title||'')}" oninput="saveMocNested('${p.id}','${m.id}','accepter','title',this.value)"></div>
-          <div class="moc-field"><label>Date</label><input type="date" value="${esc(m.accepter?.date||'')}" oninput="saveMocNested('${p.id}','${m.id}','accepter','date',this.value)"></div>
-          <div class="moc-field"><label>Decision</label><select onchange="saveMocNested('${p.id}','${m.id}','accepter','decision',this.value)">${acceptDecOpts}</select></div>
-          <div class="moc-field"><label>Comments</label><textarea oninput="saveMocNested('${p.id}','${m.id}','accepter','comments',this.value)">${esc(m.accepter?.comments||'')}</textarea></div>
-        </div>
-        <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:12px;">
-          <div style="font-size:11px;font-weight:700;color:#e07b00;margin-bottom:10px;">Change Approver</div>
-          <div class="moc-field"><label>Name</label><input type="text" value="${esc(m.approver?.name||'')}" oninput="saveMocNested('${p.id}','${m.id}','approver','name',this.value)"></div>
-          <div class="moc-field"><label>Title</label><input type="text" value="${esc(m.approver?.title||'')}" oninput="saveMocNested('${p.id}','${m.id}','approver','title',this.value)"></div>
-          <div class="moc-field"><label>Date</label><input type="date" value="${esc(m.approver?.date||'')}" oninput="saveMocNested('${p.id}','${m.id}','approver','date',this.value)"></div>
-          <div class="moc-field"><label>Decision</label><select onchange="saveMocNested('${p.id}','${m.id}','approver','decision',this.value)">${approveDecOpts}</select></div>
-          <div class="moc-field"><label>Comments</label><textarea oninput="saveMocNested('${p.id}','${m.id}','approver','comments',this.value)">${esc(m.approver?.comments||'')}</textarea></div>
-        </div>
-      </div>
-    `)}
-  </div>`;
-}
-
-/* ── RISK VERIFICATION sub-tab (reuses per-project stage data) ── */
-function buildSafetyVerification(p) {
-  const stageDocs = p.stageDocs || {};
-  const stageKeys = Object.keys(stageDocs);
-
-  if (!stageKeys.length) {
-    return `<div style="text-align:center;padding:50px;color:var(--text-3);font-size:13px;border:1.5px dashed var(--border);border-radius:10px;">
-      No stage data found for this project. Import a Risk Assessment in the project's Safety tab first.
-    </div>`;
-  }
-
-  return stageKeys.map(sk => {
-    const sd = stageDocs[sk] || {};
-    const rr = sd.riskRegister || {};
-    const hazards = rr.hazards || [];
-    if (!hazards.length) return '';
-
-    // Verification summary rows (reuse same logic as project safety tab)
-    const verifHazards = hazards.filter(h => h.controls?.length);
-    if (!verifHazards.length) return '';
-
-    const verifRows = hazards.map((h, idx) => {
-      const evals = h.controlEvals || [];
-      const total = evals.length;
-      const eff = evals.filter(e => e?.status==='impl_eff').length;
-      const notEff = evals.filter(e => e?.status==='impl_not_eff').length;
-      const notImpl = evals.filter(e => e?.status==='not_impl').length;
-      const unv = total - eff - notEff - notImpl;
-      const statusInfo = computeHazardStatus(h);
-      const STATUS_LABEL = {compliant:'✓ Compliant',noncompliant:'✕ Non-Compliant',partial:'◑ Partial',inprogress:'● In Progress',unverified:'— Unverified'};
-      const STATUS_COLOR = {compliant:'var(--green)',noncompliant:'var(--red)',partial:'var(--amber)',inprogress:'var(--accent)',unverified:'var(--text-3)'};
-
-      const isExp = !!(riskExpandedRows['st_rv_'+sk+'_'+idx]);
-      const ctrlRows = (h.controls||[]).map((ctrl,ci) => {
-        const ev = evals[ci] || {};
-        const evStatus = ev.status || 'unverified';
-        const evColors = {impl_eff:'var(--green)',impl_not_eff:'var(--red)',not_impl:'var(--amber)',unverified:'var(--text-3)'};
-        const evLabels = {impl_eff:'Effective',impl_not_eff:'Not Effective',not_impl:'Not Implemented',unverified:'Unverified'};
-        const ab = (h.actionBy||[])[ci]||'';
-        return `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:6px 10px;font-size:10.5px;color:var(--text-3);width:28px;text-align:center;">${ci+1}</td>
-          <td style="padding:6px 10px;font-size:11.5px;">${esc(ctrl)}</td>
-          ${ab?`<td style="padding:6px 10px;font-size:11px;color:var(--text-3);white-space:nowrap;">${esc(ab)}</td>`:''}
-          <td style="padding:6px 10px;white-space:nowrap;"><span style="font-size:10px;font-weight:700;color:${evColors[evStatus]||'var(--text-3)'};">${evLabels[evStatus]||'Unverified'}</span></td>
-          ${ev.remarks?`<td style="padding:6px 10px;font-size:11px;color:var(--text-3);">${esc(ev.remarks)}</td>`:'<td></td>'}
-        </tr>`;
-      }).join('');
-
-      return `<tr onclick="toggleRiskHazard('${sk}',${idx},'st_rv_')" style="cursor:pointer;">
-        <td style="width:32px;text-align:center;font-weight:700;font-size:11px;color:var(--text-3);">${h.num||idx+1}</td>
-        <td style="font-size:12.5px;">${esc(h.hazard||'')}</td>
-        <td style="font-size:11px;text-align:center;">${esc(h.inherentScore||'—')}</td>
-        <td style="font-size:11px;text-align:center;">${esc(h.residualScore||'—')}</td>
-        <td style="white-space:nowrap;"><span style="font-size:11px;font-weight:700;color:${STATUS_COLOR[statusInfo]||'var(--text-3)'};">${STATUS_LABEL[statusInfo]||'—'}</span></td>
-        <td style="text-align:center;font-size:11px;">${total}</td>
-        <td style="text-align:center;font-size:11px;">${notImpl+notEff}</td>
-      </tr>
-      <tr id="rr-detail-st_rv_${sk}-${idx}" style="${isExp?'':'display:none;'}">
-        <td colspan="7" style="padding:0;"><table style="width:100%;border-collapse:collapse;"><tbody>${ctrlRows}</tbody></table></td>
-      </tr>`;
-    }).join('');
-
-    // Verification log
-    const vl = sd.verificationLog || { records: [] };
-    const vlRecs = [...(vl.records||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const vlRows = vlRecs.map(r => `<tr>
-      <td style="font-size:11.5px;white-space:nowrap;">${r.date||'—'}</td>
-      <td style="font-size:11.5px;">${esc(r.verifier||'—')}</td>
-      <td style="font-size:11.5px;">${esc(r.mocRef||'—')}</td>
-      <td style="text-align:center;font-size:11px;">${r.hazardsTotal||0}</td>
-      <td style="text-align:center;"><span style="font-size:10px;font-weight:700;color:var(--green);">${r.compliant||0}</span></td>
-      <td style="text-align:center;"><span style="font-size:10px;font-weight:700;color:var(--amber);">${r.partial||0}</span></td>
-      <td style="text-align:center;"><span style="font-size:10px;font-weight:700;color:var(--red);">${r.nonCompliant||0}</span></td>
-      <td style="text-align:center;"><span style="font-size:10px;color:var(--text-3);">${r.unverified||0}</span></td>
-      <td><button class="btn btn-ghost btn-xs" onclick="showVerifHistory('${sk}','${r.id}')">View</button></td>
-      <td><button class="doc-del-btn" onclick="deleteVerifLogRecord('${sk}','${r.id}')">×</button></td>
-    </tr>`).join('');
-
-    return `<div style="margin-bottom:28px;">
-      <div class="doc-actions" style="margin-bottom:12px;">
-        <div class="sec-label" style="flex:1;">Risk Verification — ${esc(sk)}</div>
-        <button class="btn btn-ghost btn-xs" onclick="openVerifyPageForProject('${p.id}','${sk}',0)">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          Open Verification Form ↗
-        </button>
-      </div>
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:20px;">
-        <table class="risk-table">
-          <thead><tr>
-            <th style="width:32px;">#</th><th>Hazard</th><th>Inherent</th><th>Residual</th>
-            <th style="min-width:140px;">Status</th><th style="width:80px;text-align:center;">Controls</th>
-            <th style="width:90px;text-align:center;">Findings</th>
-          </tr></thead>
-          <tbody>${verifRows}</tbody>
-        </table>
-      </div>
-      <div class="doc-actions" style="margin-bottom:10px;">
-        <div class="sec-label" style="flex:1;">Risk Verification History</div>
-      </div>
-      <div class="doc-summary" style="margin-bottom:14px;grid-template-columns:repeat(2,1fr);">
-        <div class="doc-stat"><div class="doc-stat-val">${vlRecs.length||'—'}</div><div class="doc-stat-lbl">Checks Completed</div></div>
-        <div class="doc-stat"><div class="doc-stat-val">${vlRecs[0]?.date||'—'}</div><div class="doc-stat-lbl">Last Check</div></div>
-      </div>
-      ${vlRecs.length ? `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
-        <table class="doc-table" style="min-width:760px;">
-          <thead><tr>
-            <th>Date</th><th>Verifier</th><th>MOC Ref</th>
-            <th style="text-align:center;">Total</th>
-            <th style="text-align:center;color:var(--green);">✓ Compliant</th>
-            <th style="text-align:center;color:var(--amber);">◑ Partial</th>
-            <th style="text-align:center;color:var(--red);">✕ Non-Comp.</th>
-            <th style="text-align:center;color:var(--text-3);">— Unverified</th>
-            <th style="width:60px;"></th><th style="width:32px;"></th>
-          </tr></thead>
-          <tbody>${vlRows}</tbody>
-        </table>
-      </div>` : `<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">No verification checks logged yet.</div>`}
-    </div>`;
-  }).filter(Boolean).join('<hr style="border:none;border-top:1px solid var(--border);margin:24px 0;">') ||
-  `<div style="text-align:center;padding:40px;color:var(--text-3);font-size:13px;border:1.5px dashed var(--border);border-radius:10px;">No hazard data found. Import a Risk Assessment in the project's Safety tab first.</div>`;
-}
-
-/* ── OBSERVATIONS sub-tab — shows project_execution stage only ── */
-function buildSafetyObservations(p) {
-  const sk = 'project_execution';
-  const sd = (p.stageDocs || {})[sk] || {};
-  const obs = sd.observations || [];
-  const hazards = sd.riskRegister?.hazards || [];
-  const safetyObs = obs.filter(o => !o.raisedBy || o.raisedBy === 'safety');
-
-  const pid2 = esc(p.id);
-  const rows = safetyObs.map((ob, i) => {
-    const oi = esc(ob.id);
-    const stOpen = ob.status === 'open';
-    const dot = stOpen
-      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:5px;"></span>`
-      : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:5px;"></span>`;
-    let linkedLabel = '—';
-    if (ob.linkedHazard?.startsWith('h')) {
-      const hi = parseInt(ob.linkedHazard.slice(1));
-      const lh = hazards[hi];
-      if (lh) linkedLabel = `<span style="font-size:10px;background:rgba(59,136,250,.12);color:#3b88fa;padding:1px 6px;border-radius:8px;font-weight:600;">#${lh.num}</span>`;
-    }
-    return `<tr>
-      <td style="font-weight:700;text-align:center;color:var(--text-3);font-size:11px;">${i+1}</td>
-      <td><input type="date" class="sub-date-input" value="${ob.dateReport||''}" oninput="stUpdateObs('${pid2}','${sk}','${oi}','dateReport',this.value)"></td>
-      <td><input type="date" class="sub-date-input" value="${ob.dateObservation||''}" oninput="stUpdateObs('${pid2}','${sk}','${oi}','dateObservation',this.value)"></td>
-      <td><textarea class="obs-text" rows="2" oninput="stUpdateObs('${pid2}','${sk}','${oi}','details',this.value)">${esc(ob.details||'')}</textarea></td>
-      <td><textarea class="obs-text" rows="2" oninput="stUpdateObs('${pid2}','${sk}','${oi}','actionTaken',this.value)">${esc(ob.actionTaken||'')}</textarea></td>
-      <td><textarea class="obs-text" rows="2" oninput="stUpdateObs('${pid2}','${sk}','${oi}','correctivePlan',this.value)">${esc(ob.correctivePlan||'')}</textarea></td>
-      <td>${linkedLabel}</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:5px;">${dot}
-          <select class="date-map-select" style="width:80px;" onchange="stUpdateObs('${pid2}','${sk}','${oi}','status',this.value);stObsStatusChanged('${pid2}','${sk}','${oi}',this.value)">
-            <option value="open" ${stOpen?'selected':''}>Open</option>
-            <option value="closed" ${!stOpen?'selected':''}>Closed</option>
-          </select>
-        </div>
-        ${!stOpen?`<input type="date" class="sub-date-input" style="margin-top:4px;" value="${ob.dateClosed||''}" oninput="stUpdateObs('${pid2}','${sk}','${oi}','dateClosed',this.value)">`:''}
-      </td>
-      <td><button class="doc-del-btn" onclick="stDeleteObs('${pid2}','${sk}','${oi}')">×</button></td>
-    </tr>`;
-  }).join('');
-
-  const summary = safetyObs.length ? `<div class="doc-summary" style="margin-bottom:14px;">
-    <div class="doc-stat"><div class="doc-stat-val">${safetyObs.length}</div><div class="doc-stat-lbl">Total</div></div>
-    <div class="doc-stat"><div class="doc-stat-val" style="color:var(--red);">${safetyObs.filter(o=>o.status==='open').length}</div><div class="doc-stat-lbl">Open</div></div>
-    <div class="doc-stat"><div class="doc-stat-val" style="color:var(--green);">${safetyObs.filter(o=>o.status==='closed').length}</div><div class="doc-stat-lbl">Closed</div></div>
-    <div class="doc-stat"><div class="doc-stat-val">${safetyObs.filter(o=>o.linkedHazard&&o.linkedHazard!=='').length}</div><div class="doc-stat-lbl">Linked to RA</div></div>
-  </div>` : '';
-
-  return `<div>
-    <div class="doc-actions" style="margin-bottom:10px;">
-      <div class="sec-label" style="flex:1;">Safety Observation Register</div>
-      <button class="btn btn-primary btn-xs" onclick="stAddObs('${pid2}','${sk}')">+ Add Observation</button>
-    </div>
-    ${summary}
-    ${safetyObs.length ? `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
-      <table class="doc-table obs-table" style="min-width:1100px;">
-        <thead><tr>
-          <th style="width:32px;text-align:center;">#</th>
-          <th style="min-width:110px;">Date of Report</th>
-          <th style="min-width:110px;">Date of Observation</th>
-          <th style="min-width:180px;">Observation Details</th>
-          <th style="min-width:160px;">Action Taken</th>
-          <th style="min-width:160px;">Corrective Action Plan</th>
-          <th style="min-width:120px;">Linked Hazard</th>
-          <th style="min-width:120px;">Status</th>
-          <th style="width:30px;"></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>` : `<div style="text-align:center;padding:24px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">No safety observations recorded yet. Click "+ Add Observation" to begin.</div>`}
-  </div>`;
 }
 
 /* ── MOC file trigger (avoids display:none label issues across browsers) ── */
@@ -12677,7 +12245,7 @@ function addMoc(projectId) {
   const now = new Date();
   const mocNum = (p.mocs.length + 1).toString().padStart(3,'0');
   p.mocs.push({
-    id: 'moc_' + Date.now(),
+    id: 'moc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
     mocRef: `MOC-${now.getFullYear()}-${mocNum}`,
     status: 'draft',
     isAddendum: false,
@@ -12907,7 +12475,7 @@ async function importMocDocx(projectId, input) {
   const now = new Date();
   const mocNum = (p.mocs.length + 1).toString().padStart(3,'0');
   p.mocs.push({
-    id: 'moc_' + Date.now(),
+    id: 'moc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
     mocRef: `MOC-${now.getFullYear()}-${mocNum}`,
     status: 'draft',
     isAddendum: false,
@@ -13007,7 +12575,11 @@ function govDaysAtForum(a, forum) {
 }
 
 function govDaysOpen(a) {
-  const start = new Date(a.dateOpened||a.id.slice(4,14)||Date.now());
+  // a.id is 'act_' + Date.now() + '_' + rand — slice(4,17) takes all 13 epoch-ms digits so
+  // `new Date(...)` gets a number, not a 10-char numeric string it can't parse (that produced
+  // an Invalid Date and rendered "NaNd" whenever dateOpened was empty).
+  const idTime = Number(a.id.slice(4, 17));
+  const start = new Date(a.dateOpened || (Number.isFinite(idTime) ? idTime : Date.now()));
   const end   = a.dateClosed ? new Date(a.dateClosed) : new Date();
   return Math.max(0, Math.round((end - start) / 86400000));
 }
@@ -13115,21 +12687,21 @@ function buildGovDetailPanel(a) {
       <div class="forum-node">
         <div class="forum-node-dot ${nodeClass('coordination')}"></div>
         <div class="forum-node-lbl ${nodeLblClass('coordination')}">Coordination<br>Meeting</div>
-        <div class="forum-node-date">${a.dateOpened||'—'}</div>
+        <div class="forum-node-date">${esc(a.dateOpened||'—')}</div>
         ${durStr(dCoord)}
       </div>
       <div class="forum-arrow"></div>
       <div class="forum-node">
         <div class="forum-node-dot ${nodeClass('working_group')}"></div>
         <div class="forum-node-lbl ${nodeLblClass('working_group')}" style="${!hasWG?'opacity:.4':''}">Aerodrome/AIMO<br>Working Group</div>
-        <div class="forum-node-date" style="${!hasWG?'opacity:.4':''}">${a.escalationDate||'—'}</div>
+        <div class="forum-node-date" style="${!hasWG?'opacity:.4':''}">${esc(a.escalationDate||'—')}</div>
         ${durStr(dWG)}
       </div>
       <div class="forum-arrow"></div>
       <div class="forum-node">
         <div class="forum-node-dot ${nodeClass('steering')}"></div>
         <div class="forum-node-lbl ${nodeLblClass('steering')}" style="${!hasSC?'opacity:.4':''}">RAC-KSIADC<br>Steering Committee</div>
-        <div class="forum-node-date" style="${!hasSC?'opacity:.4':''}">${a.steeringDate||'—'}</div>
+        <div class="forum-node-date" style="${!hasSC?'opacity:.4':''}">${esc(a.steeringDate||'—')}</div>
         ${durStr(dSC)}
       </div>
     </div>`;
@@ -13178,7 +12750,7 @@ function buildGovDetailPanel(a) {
     actionSection = `<div class="gov-detail-section" style="background:var(--green-lo);border:1px solid rgba(10,170,110,.25);border-radius:8px;padding:12px 14px;">
       <div class="gov-detail-label">Resolution</div>
       <div class="gov-detail-val">${esc(a.resolution||'—')}</div>
-      <div style="font-size:10px;color:var(--text-3);margin-top:4px;">Closed: ${a.dateClosed||'—'} · Forum: ${{'coordination':'Coordination Meeting','working_group':'Working Group','steering':'Steering Committee'}[a.closedAtForum]||'—'}</div>
+      <div style="font-size:10px;color:var(--text-3);margin-top:4px;">Closed: ${esc(a.dateClosed||'—')} · Forum: ${{'coordination':'Coordination Meeting','working_group':'Working Group','steering':'Steering Committee'}[a.closedAtForum]||'—'}</div>
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;align-self:flex-start;" onclick="reopenGovAction('${a.id}')">↺ Reopen</button>
     </div>`;
   } else if (a.status === 'steering') {
@@ -13255,7 +12827,7 @@ function buildGovDetailPanel(a) {
       <div class="gov-detail-label">Details</div>
       <div class="gov-detail-val" style="margin-top:4px;">${esc(a.details||'—')}</div>
       <div style="font-size:10px;color:var(--text-3);margin-top:5px;">
-        Raised by: <b>${esc(a.raisedBy||'—')}</b> · Opened: <b>${a.dateOpened||'—'}</b>${a.meetingRef?` · Meeting: <b>${a.meetingRef}</b>`:''}
+        Raised by: <b>${esc(a.raisedBy||'—')}</b> · Opened: <b>${esc(a.dateOpened||'—')}</b>${a.meetingRef?` · Meeting: <b>${esc(a.meetingRef)}</b>`:''}
       </div>
     </div>
     <!-- Two-column grid -->
@@ -13269,7 +12841,7 @@ function buildGovDetailPanel(a) {
             <div style="font-size:12px;color:${breach?'var(--red)':'var(--text-1)'};font-weight:700;">
               ${a.targetDate?fmtDate(a.targetDate):'Not set'}${breach?' (Breached)':''}
             </div>
-            ${a.status==='closed'?`<div style="font-size:10px;color:var(--green);">Closed on ${a.dateClosed||'—'}</div>`:''}
+            ${a.status==='closed'?`<div style="font-size:10px;color:var(--green);">Closed on ${esc(a.dateClosed||'—')}</div>`:''}
           </div>
         </div>
         <div class="gov-detail-label" style="margin-top:8px;">Date Change History</div>
@@ -13335,7 +12907,7 @@ function renderGovernanceView() {
         <td><span class="pri-badge ${priCls}">${(a.priority||'medium').charAt(0).toUpperCase()+(a.priority||'medium').slice(1)}</span></td>
         <td style="max-width:280px;">
           <div style="font-weight:600;color:var(--text-1);font-size:12.5px;line-height:1.3;">${esc(a.title)}</div>
-          ${a.meetingRef?`<div style="font-size:10px;color:var(--text-3);margin-top:2px;">📋 Meeting: ${a.meetingRef}</div>`:''}
+          ${a.meetingRef?`<div style="font-size:10px;color:var(--text-3);margin-top:2px;">📋 Meeting: ${esc(a.meetingRef)}</div>`:''}
         </td>
         <td style="font-size:11.5px;">${proj!=='General'?esc(proj):'<span style="color:var(--text-3);">—</span>'}</td>
         <td style="font-size:11.5px;">${a.assignedTo?esc(a.assignedTo):'<span style="color:var(--text-3);">—</span>'}</td>
@@ -13483,7 +13055,22 @@ function saveGovAction() {
 
   if (govEditingId) {
     const a = govState.actions.find(x=>x.id===govEditingId);
-    if (a) Object.assign(a, fields);
+    if (a) {
+      // M9: record target-date changes here too, same as the inline updateGovTargetDate()
+      // editor does — previously only the inline editor recorded history, so a date slipped
+      // via this modal left no trace in the history panel or Excel export.
+      if (fields.targetDate && a.targetDate !== fields.targetDate) {
+        if (!a.targetDateHistory) a.targetDateHistory = [];
+        a.targetDateHistory.push({
+          date:       new Date().toISOString().slice(0,10),
+          oldDate:    a.targetDate || '',
+          targetDate: fields.targetDate,
+          changedBy:  '',
+          reason:     'Edited via Edit Action modal',
+        });
+      }
+      Object.assign(a, fields);
+    }
   } else {
     govState.actions.push({
       id: 'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
@@ -13556,12 +13143,12 @@ function escalateGovAction(id) {
     a.escalationTo      = to;
     a.escalationChannel = ch;
     a.escalationDate    = dt;
-    a.comments.push({ id:'cmt_'+Date.now(), date:dt, author:'System', text:`Escalated to Aerodrome/AIMO Working Group — ${to} via ${ch}.` });
+    a.comments.push({ id:'cmt_'+Date.now()+'_'+Math.random().toString(36).slice(2), date:dt, author:'System', text:`Escalated to Aerodrome/AIMO Working Group — ${to} via ${ch}.` });
   } else if (a.status === 'escalated') {
     // Working Group → Steering Committee
     a.status       = 'steering';
     a.steeringDate = dt;
-    a.comments.push({ id:'cmt_'+Date.now(), date:dt, author:'System', text:`Escalated to RAC-KSIADC Steering Committee — ${to} via ${ch}.` });
+    a.comments.push({ id:'cmt_'+Date.now()+'_'+Math.random().toString(36).slice(2), date:dt, author:'System', text:`Escalated to RAC-KSIADC Steering Committee — ${to} via ${ch}.` });
   }
   saveGovernance();
   renderGovernanceView();
@@ -13775,7 +13362,7 @@ function addGovComment(id) {
   if (!text) { showToast('Please enter a comment.','warn'); return; }
   const author = resolveGovPerson('gov-cmt-author-'+id, 'gov-cmt-author-new-'+id);
   if (!a.comments) a.comments = [];
-  a.comments.push({ id:'cmt_'+Date.now(), date:new Date().toISOString().slice(0,10), author, text });
+  a.comments.push({ id:'cmt_'+Date.now()+'_'+Math.random().toString(36).slice(2), date:new Date().toISOString().slice(0,10), author, text });
   saveGovernance();
   govDetailOpen = id;
   renderGovernanceView();
@@ -13876,6 +13463,11 @@ function _sessionStamp() {
 }
 
 function downloadSession() {
+  // M2: flush any pending debounced save first — otherwise up to 600ms of edits could still
+  // be sitting only in `state.projects`, not yet in localStorage, and the exported backup file
+  // would be one edit behind while setBackupDirty(false) below claims it's fully caught up.
+  _flushPendingDeriveAndSave();
+  if (saveTimer) { clearTimeout(saveTimer); saveProjects(); }
   const data = {
     exportedAt: new Date().toISOString(),
     version: APP_VERSION,
