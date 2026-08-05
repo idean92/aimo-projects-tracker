@@ -1727,8 +1727,49 @@ body.verify-mode .fb-fab{display:none!important;}
 </head>
 <body>
 
+<!-- P14: mandatory sign-in gate — visible by default (no "hidden" class) so it covers the
+     whole viewport before any script runs; nothing behind it is populated until revealApp()
+     hides it. See initCloudSync/_agShowState/revealApp/gateSignIn in the CLOUD SYNC section. -->
+<div class="overlay" id="authGate" style="z-index:9500;">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-hdr">
+      <div>
+        <h2>Sign In Required</h2>
+        <p>Sign in to access the KSIA Projects Tracker.</p>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div id="agLoading" style="text-align:center;padding:16px 0;color:var(--text-2);font-size:12.5px;">Connecting…</div>
+      <div id="agOffline" class="hidden">
+        <div class="fb-status-msg err" id="agOfflineMsg">Can't reach the sync service. Check your connection and try again.</div>
+      </div>
+      <div id="agSignIn" class="hidden">
+        <div class="fgrp">
+          <label>Email</label>
+          <input type="text" id="agEmail" placeholder="you@company.com" autocomplete="username">
+        </div>
+        <div class="fgrp" style="margin-top:12px;">
+          <label>Password</label>
+          <input type="password" id="agPassword" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();gateSignIn();}">
+        </div>
+        <div class="fb-status-msg hidden" id="agStatusMsg"></div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <span style="font-size:10px;color:var(--text-3);">Invite-only — contact the project owner for access.</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm hidden" id="agRetryBtn" onclick="location.reload()">Retry</button>
+        <button class="btn btn-primary btn-sm hidden" id="agSignInBtn" onclick="gateSignIn()">Sign In</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- HEADER -->
-<header class="header">
+<!-- P14: inert by default while #authGate is up — baked into the markup (not toggled by JS on
+     first paint) so there is no window where Tab+Enter can reach a header/app-shell control
+     before revealApp()/JS runs. revealApp() and the verify-mode branch remove this. -->
+<header class="header" inert>
   <div class="header-brand">
     <div class="logo">AIMO</div>
     <div class="brand-text">
@@ -1754,7 +1795,7 @@ body.verify-mode .fb-fab{display:none!important;}
 </header>
 
 <!-- APP SHELL -->
-<div class="app-shell">
+<div class="app-shell" inert>
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
@@ -2220,7 +2261,7 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v2.1';
+const APP_VERSION  = 'v3.0';
 const APP_DATE     = '05 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
@@ -2280,6 +2321,11 @@ let cardMapInstances = {};
 // crash) with fresh demo data.
 let _storageCorrupt = false;
 function loadProjects() {
+  // Review-caught (P14): reset here, not just declare-once — loadProjects() now runs more than
+  // once per page life (boot, then again after a cloud pull applies fresh data), and a sticky
+  // true from an earlier call would wrongly fire revealApp()'s corrupted-data alert even after
+  // a successful pull already replaced the bad local data with good remote data.
+  _storageCorrupt = false;
   const raw = localStorage.getItem(STORAGE_KEY);
   try {
     const v = JSON.parse(raw);
@@ -2561,6 +2607,8 @@ async function cloudSignIn() {
     document.getElementById('caPassword').value = '';
     closeCloudAuthModal();
     await sbPullNow();
+    revealApp(); // P14: no-op if already revealed — just covers the (normally unreachable, since
+                 // #authGate blocks this modal while signed out) case of signing in from here
   } catch (err) {
     statusEl.className = 'fb-status-msg err';
     statusEl.textContent = 'Sign in failed — check your email and password.';
@@ -2607,6 +2655,7 @@ async function cloudSignOut() {
   sbResetSessionState();
   setSyncStatus('signed-out');
   closeCloudAuthModal();
+  _agShowState('signin'); // P14: mandatory gate reappears on sign-out — same explicit-call-too pattern as above
 }
 
 function sbSchedulePush() {
@@ -2811,7 +2860,12 @@ async function sbPullNow(force) {
 }
 
 function initCloudSync() {
-  if (typeof window.supabase === 'undefined') return; // CDN blocked/offline — stay local-only
+  if (typeof window.supabase === 'undefined') {
+    // P14: no local-only fallback anymore — without the CDN there's no way to sign in, so
+    // block instead of silently letting the user browse whatever's cached locally.
+    _agShowState('offline');
+    return;
+  }
   sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const btn = document.getElementById('cloudSyncBtn');
   if (btn) btn.classList.remove('hidden');
@@ -2823,18 +2877,32 @@ function initCloudSync() {
       // push/pull already in flight belongs to a session that's now dead.
       sbResetSessionState();
       setSyncStatus('signed-out');
+      // P14: re-gate — mandatory sign-in means signing out (here or in another tab) always
+      // brings the blocking gate back, not just the small header status dot.
+      _agShowState('signin');
       return;
     }
     // Don't claim 'synced' here — sbPullNow() (called below, or by cloudSignIn) sets the
     // real status once a pull actually completes. This fires on INITIAL_SESSION/TOKEN_REFRESHED
     // too, which would otherwise mask a genuine in-progress/error state with a false "synced".
+    // Review-caught (P14): if the gate is still up when this fires — e.g. this tab was gated
+    // and another tab (sharing the same persisted Supabase session) just signed in, or a token
+    // refresh restored a session after this tab's own gate reappeared — pull and reveal here.
+    // Without this, only the initial getSession() branch below ever calls revealApp(), so a
+    // signed-in event arriving any other way left the gate up forever despite a live session.
+    const gate = document.getElementById('authGate');
+    if (gate && !gate.classList.contains('hidden')) {
+      sbPullNow().then(revealApp);
+    }
   });
   sbClient.auth.getSession().then(({ data }) => {
     if (data.session) {
       sbUser = data.session.user;
-      sbPullNow();
+      sbPullNow().then(revealApp);
+    } else {
+      _agShowState('signin');
     }
-  }).catch(() => setSyncStatus('error', 'Couldn\'t restore your session — sign in again.'));
+  }).catch(() => _agShowState('offline', 'Couldn\'t restore your session — check your connection and try again.'));
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !sbUser || sbSyncing) return;
     // If there's an unsynced local edit AND we have an established baseline, push it (which
@@ -2844,6 +2912,123 @@ function initCloudSync() {
     // refuses to run until pulled, permanently stalling sync for the rest of the session.
     if (sbDirty && sbPulled) sbPushNow(); else sbPullNow();
   });
+}
+
+/* ── P14: mandatory sign-in gate ──────────────────────────────────────────
+   #authGate is visible-by-default in the markup (no "hidden" class) so it
+   covers the whole viewport before any script runs — no flash of app
+   content. It only ever hides once a signed-in session has been confirmed
+   (existing or freshly entered) and a cloud pull has been attempted; there
+   is no local-only path anymore, so a CDN/network failure blocks instead of
+   silently degrading (see initCloudSync's 'offline' branch above). */
+// Review-caught: `.overlay`'s z-index (600) is shared by every modal in the file, and ties
+// resolve by DOM order — #authGate being first in <body> meant any later-opened modal (e.g.
+// Session, reachable purely by tab-focusing the header button and pressing Enter, since a CSS
+// overlay blocks clicks but not keyboard focus/tab order on elements behind it) could paint and
+// operate ON TOP of the gate. Fixed two ways: #authGate's own z-index (9500, in the markup) now
+// beats every other overlay regardless of DOM order, and `inert` (baked into the header/app-shell
+// markup by default, toggled here) removes the header/sidebar/content from the tab order
+// entirely while gated, so there's nothing behind the gate to focus in the first place.
+function _gateLock(locked) {
+  const header = document.querySelector('header.header');
+  const shell = document.querySelector('.app-shell');
+  if (header) header.inert = locked;
+  if (shell) shell.inert = locked;
+}
+function _agShowState(s, detail) {
+  const gate = document.getElementById('authGate');
+  if (gate) gate.classList.remove('hidden');
+  _gateLock(true);
+  const loading = document.getElementById('agLoading');
+  const offline = document.getElementById('agOffline');
+  const signin  = document.getElementById('agSignIn');
+  if (loading) loading.classList.toggle('hidden', s !== 'loading');
+  if (offline) offline.classList.toggle('hidden', s !== 'offline');
+  if (signin)  signin.classList.toggle('hidden', s !== 'signin');
+  const retryBtn  = document.getElementById('agRetryBtn');
+  const signInBtn = document.getElementById('agSignInBtn');
+  if (retryBtn)  retryBtn.classList.toggle('hidden', s !== 'offline');
+  if (signInBtn) signInBtn.classList.toggle('hidden', s !== 'signin');
+  if (s === 'offline' && detail) {
+    const msg = document.getElementById('agOfflineMsg');
+    if (msg) msg.textContent = detail;
+  }
+}
+
+// Runs once, the first time a signed-in session is confirmed (fresh sign-in or a restored
+// one) — does the migration/render work that, pre-P14, ran unconditionally at boot. Safe to
+// call again on a later re-sign-in (e.g. after a mid-session sign-out re-gated the app): the
+// _appRevealed guard just hides the gate without re-running migration/render.
+//
+// Review-caught: this must re-check sbUser right before revealing, not just at the moment it
+// was scheduled — sbPullNow() *resolves* (doesn't reject) both when there's no session and when
+// the session changed mid-flight, so `sbPullNow().then(revealApp)` could otherwise hide the gate
+// and show the app to a now-signed-out user (e.g. a token refresh fails and emits SIGNED_OUT
+// while a pull that started while still signed in is in flight).
+let _appRevealed = false;
+function revealApp() {
+  if (!sbUser) { _agShowState('signin'); return; }
+  const gate = document.getElementById('authGate');
+  if (_appRevealed) { if (gate) gate.classList.add('hidden'); _gateLock(false); return; }
+  _appRevealed = true;
+  loadProjects(); loadGovernance(); loadKPISettings(); // pick up whatever the pull just applied
+  // Migration: strip any legacy multi-project seed data (v4 and below)
+  const _hadOldSeeds = state.projects.filter(p => p._seedV).length > 1;
+  if (_hadOldSeeds) {
+    state.projects = state.projects.filter(p => !p._seedV);
+    lsSet(STORAGE_KEY, state.projects);
+  }
+  if (govState && govState._seedV) {
+    govState = { actions: [], persons: [] };
+    lsSet(GOVERNANCE_KEY, govState);
+  }
+  // Review-caught: no more demo-project auto-seeding here. Pre-P14 this ran before any cloud
+  // sign-in existed, so lsSet()'s push was always a no-op (sbUser was null). Now that revealApp()
+  // only ever runs while signed in, seeding on a genuinely-empty team_state row would push a fake
+  // demo project into the shared team data for everyone to see. An empty project list post-pull
+  // is a legitimate state now (a fresh team with nothing entered yet) — just show it empty.
+  if (_storageCorrupt) {
+    alert('⚠ Your saved project data could not be read (it may be corrupted or an interrupted save) and was left untouched instead of being replaced. A backup copy of the unreadable data was kept under the browser storage key "'
+      + STORAGE_KEY + '_corrupt_backup" — export it via a browser console (localStorage.getItem(...)) and share it with the app owner if you need it recovered.');
+  }
+  state.projects.forEach(p=>{ if(p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
+  renderSidebar();
+  showHomepage();
+  if (gate) gate.classList.add('hidden');
+  _gateLock(false);
+}
+
+let _agSigningIn = false;
+async function gateSignIn() {
+  if (_agSigningIn || !sbClient) return;
+  const email = document.getElementById('agEmail').value.trim();
+  const password = document.getElementById('agPassword').value;
+  const statusEl = document.getElementById('agStatusMsg');
+  if (!email || !password) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Enter your email and password.';
+    return;
+  }
+  _agSigningIn = true;
+  const btn = document.getElementById('agSignInBtn');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  statusEl.className = 'fb-status-msg hidden';
+  try {
+    const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    sbUser = data.user;
+    document.getElementById('agPassword').value = '';
+    await sbPullNow();
+    revealApp();
+  } catch (err) {
+    statusEl.className = 'fb-status-msg err';
+    statusEl.textContent = 'Sign in failed — check your email and password.';
+  } finally {
+    _agSigningIn = false;
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -11421,6 +11606,16 @@ if (_vpParams.get('verify')) {
   // there. Making this window sync independently is a real feature (works even with the main
   // tab closed) but needs shared, not per-window, dirty tracking — tracked as a follow-up.
   try { state.projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { state.projects = []; }
+  // P14: the mandatory sign-in gate (#authGate) is only driven by initCloudSync/revealApp,
+  // neither of which run in this branch — hide it explicitly (and lift the inert lock on the
+  // header/app-shell that ships baked into their markup) so the verify pop-out (which
+  // deliberately has no cloud sync of its own, see the comment above) isn't blocked forever.
+  // Review-caught: do this synchronously now, not deferred to DOMContentLoaded — #authGate is
+  // already in the DOM by the time this script runs (it's near the top of <body>), so waiting
+  // for DOMContentLoaded only added a visible flash of "Sign In Required" over the verify page.
+  const _vpGate = document.getElementById('authGate');
+  if (_vpGate) _vpGate.classList.add('hidden');
+  _gateLock(false); // function declaration is hoisted — defined later in this same script block
   initVerifyMode(
     _vpParams.get('pid'),
     _vpParams.get('sk'),
@@ -11431,34 +11626,14 @@ if (_vpParams.get('verify')) {
   loadProjects();
   loadGovernance();
   loadKPISettings();
-  // Migration: strip any legacy multi-project seed data (v4 and below)
-  const _hadOldSeeds = state.projects.filter(p => p._seedV).length > 1;
-  if (_hadOldSeeds) {
-    state.projects = state.projects.filter(p => !p._seedV);
-    lsSet(STORAGE_KEY, state.projects);
-  }
-  if (govState && govState._seedV) {
-    govState = { actions: [], persons: [] };
-    lsSet(GOVERNANCE_KEY, govState);
-  }
-  // Seed one sample project if no projects exist yet — but never when that emptiness is
-  // actually corrupted data (loadProjects() sets _storageCorrupt and stashes the raw value
-  // under `${STORAGE_KEY}_corrupt_backup`): overwriting a truncated-but-maybe-recoverable
-  // write with demo data would destroy it permanently on the very first load after the
-  // corruption happened.
-  if (state.projects.length === 0 && !_storageCorrupt) {
-    seedProjects();
-    state.projects = state.projects.slice(0, 1); // keep only first demo project
-    lsSet(STORAGE_KEY, state.projects);
-  } else if (_storageCorrupt) {
-    alert('⚠ Your saved project data could not be read (it may be corrupted or an interrupted save) and was left untouched instead of being replaced. A backup copy of the unreadable data was kept under the browser storage key "'
-      + STORAGE_KEY + '_corrupt_backup" — export it via a browser console (localStorage.getItem(...)) and share it with the app owner if you need it recovered.');
-  }
-  state.projects.forEach(p=>{ if(p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
-  renderSidebar();
-  showHomepage();
-  // Session modal HTML is parsed after this script block, so defer until DOM is ready
-  document.addEventListener('DOMContentLoaded', openSessionModal);
+  // P14: local data is loaded above (so revealApp() below is instant once the gate clears),
+  // but nothing is rendered/seeded yet — the mandatory sign-in gate (#authGate) covers the
+  // whole viewport by default in the markup, and revealApp() (see the CLOUD SYNC section)
+  // does the migration/seed/render work that used to happen unconditionally right here, once
+  // initCloudSync() below has confirmed a signed-in session (existing or freshly signed in)
+  // and pulled. No more "browse local-only, sign in later" — see docs/ARCHITECTURE.md.
+  // Session modal no longer auto-opens on boot (that was the old local-first entry point);
+  // it's still reachable post-login via the header's Session button.
   // Cloud sync client is a `defer`'d CDN script — not guaranteed loaded until DOMContentLoaded.
   // Main-app window only — see the comment in the verify-mode branch above for why.
   document.addEventListener('DOMContentLoaded', initCloudSync);
