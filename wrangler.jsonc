@@ -3,6 +3,14 @@
   // Update to today's date if Wrangler complains this is stale.
   "compatibility_date": "2026-08-01",
   "main": "./src/worker.js",
+  // Every git-push build runs `wrangler deploy`, which deletes dashboard-set
+  // plaintext variables not listed here. keep_vars stops that; the database ID
+  // lives here so it survives regardless. NOTION_API_KEY must be stored in the
+  // dashboard as type "Secret" (never "Text") — secrets survive every deploy.
+  "keep_vars": true,
+  "vars": {
+    "NOTION_FEEDBACK_DATABASE_ID": "94824d19762d4feb9cbee64de525930b"
+  },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

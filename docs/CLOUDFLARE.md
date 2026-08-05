@@ -19,8 +19,30 @@ shared with those.
   Notion API. Needs two environment variables set on the Worker before it actually
   works (see "Feedback endpoint setup" below).
 
-## Feedback endpoint setup — done ✅ (01 Aug 2026)
-Both variables are set and confirmed working:
+## Feedback endpoint setup — ⚠️ regressed, root cause found (05 Aug 2026)
+The variables were set and confirmed working on 01 Aug, but they **kept
+disappearing after subsequent pushes**, taking the feedback endpoint back to
+`503`. Root cause: every git-push build runs `wrangler deploy`, and by default
+that **deletes all dashboard-set plaintext ("Text") variables** that aren't
+listed in `wrangler.jsonc`. True **Secrets are never deleted** by deploys — so
+the fact that `NOTION_API_KEY` kept dropping means it had been entered in the
+dashboard as type "Text", not type "Secret".
+
+Fix (in `wrangler.jsonc`, on branch `claude/notion-feedback-key-cloudflare-d338dt`):
+- `"keep_vars": true` — deploys no longer wipe dashboard variables.
+- `NOTION_FEEDBACK_DATABASE_ID` moved into the config's `vars` block (it's not
+  sensitive), so it ships with every deploy automatically.
+
+**Two manual steps remain for the owner:**
+1. Re-add `NOTION_API_KEY` in **Settings → Variables and secrets** (top-level
+   runtime panel, per the gotcha below) and set its **Type to "Secret"** — not
+   "Text". As a Secret it will survive every future deploy even without
+   `keep_vars`.
+2. This fix only protects the live Worker once the `wrangler.jsonc` change is
+   on the branch the Worker builds from (`claude/review-pending-context-jbjnrg`
+   as of today) — merge/cherry-pick it there.
+
+Original setup notes (01 Aug 2026):
 - **`NOTION_API_KEY`** (secret) — a Notion internal integration, shared with the
   Feedback Inbox database via its `•••` → Connections menu.
 - **`NOTION_FEEDBACK_DATABASE_ID`** (plain var) — `94824d19762d4feb9cbee64de525930b`.
@@ -57,8 +79,10 @@ Notion's file-upload API) is a follow-up, not built.
   no `main` branch in this repo yet (everything so far has been pushed straight to
   this working branch). If/when this branch is merged into a real `main`, repoint the
   Worker's production branch in Settings → Builds.
-- ✅ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` set and working** — see
-  "Feedback endpoint setup" above for the exact panel that mattered.
+- ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` kept getting wiped by
+  deploys** (05 Aug 2026: endpoint back to `503`) — root cause and fix in
+  "Feedback endpoint setup" above; `NOTION_API_KEY` must be re-added as type
+  **Secret**.
 - ✅ **Feedback pipeline confirmed end-to-end** (01 Aug 2026): submitted via a direct
   API call, verified the row landed in the Feedback Inbox database.
 - No custom domain added — the `workers.dev` URL is the only way to reach it. Add one
