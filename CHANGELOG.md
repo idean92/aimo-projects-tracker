@@ -3,6 +3,54 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v3.1 — 05 Aug 2026
+- **Design parity with the AIMO Safety Tracker sibling — Phases 1 & 3 of P16**
+  (owner request: *"review the design, UI and UX of the safety tracker and see
+  what changes need to be made to the Projects tracker so that they are
+  identical and very similar"*). Visual only — no data-model, storage or
+  behavioural change, and nothing to re-enter or re-import.
+  - **Phase 1 — shared visual language.** Ported the two style layers the
+    sibling gained after the 2026-07-19 split and this app never received:
+    the *iOS-polish* layer (consistent radii — buttons 11px, inputs 10px,
+    panels/table wraps 14px, stat tiles 12px, pills 9px — plus unified
+    transitions, press feedback, antialiased text and tap-highlight
+    suppression), and the *Refined Pages* layer (4px violet accent-bar section
+    headers, stat strips as gapped/elevated white tiles with hover lift, soft
+    surface elevation, gentler table rhythm). Added the sibling's brand palette
+    tokens (`--violet`, `--sp01`–`--sp04`, `--skydepth` …) that those layers
+    reference, and `height:100dvh` on `body`.
+  - Point fixes: the header logo was painting `--brand-grad` on top of the
+    gradient header bar, making it effectively invisible — now solid
+    `--accent`. Header ghost buttons realigned to the sibling's contrast
+    values. The project detail tab bar's active indicator moved from amber to
+    `--accent` purple: v1.3 took amber from screenshots of the sibling, but
+    there amber belongs to `.safety-sub-btn`, not the detail tab bar.
+  - **Phase 3 — section cards.** Added the sibling's `_p8()` section-card
+    component (white card, tinted header strip with violet accent bar,
+    optional count pill and header actions, optional collapse) and wrapped the
+    inner-page sections with it: KPI detail, Document Register/Documents, PSQS
+    Document Registry, Design Package Review Cycles, PRC Overview and Comment
+    Status, CRS Revision History, Delay Analytics, Risk Assessment, Risk
+    Verification (+ History), Safety/Operations/Engineering Observations, All
+    Observations, Construction Schedule, Submission Milestones, GACA Acceptance
+    Cycle, Comments by Document, and Task Schedule.
+  - Redundant `border-top` separators between those sections were removed —
+    each section is now a self-contained card — and the Document Register card
+    is skipped entirely when its summary strip is empty (previously it would
+    have rendered as an empty card when embedded in another tab).
+  - **Deliberately kept, against the sibling:** the frosted-glass project cards
+    (owner request, v1.4) and the coloured top borders on the sidebar stat
+    tiles (v1.3) — the latter now combined with the new 12px tile radius. The
+    corner "crosshair" brackets removed in v1.4 were **not** re-added even
+    though the sibling still has them.
+  - **Not copied from the sibling:** its `border-radius:0` re-skin leftovers,
+    where a class-based polish layer missed `.toast-item`, `.close-btn`,
+    `.ms-date-inp`, `.task-inp`, scrollbar thumbs and `.form-map-wrap`. This
+    app's rounded values are kept.
+  - QA: headless run over the homepage, all 8 detail tabs, every Construction
+    sub-panel, the AIPS sub-tab, Governance and Schedule, with both empty and
+    populated projects — no JavaScript errors.
+
 ## v3.0 — 05 Aug 2026
 - **New: mandatory sign-in gate — local-only usage is retired** (owner
   feedback: *"Change the login screen to be like this. Remove the prompt

@@ -942,24 +942,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   --bg-elevated:#f4eff8;--bg-hover:rgba(111,50,138,.08);--bg-active:rgba(111,50,138,.14);
   --border:#e4dcee;--border-faint:#efe9f5;
   --accent:#6F328A;--accent-lo:rgba(111,50,138,.12);
-  --text-1:#2a2033;--text-2:#5c5468;--text-3:#7b7488;
+  --text-1:#2a2033;--text-2:#5c5468;--text-3:#8a8496;
   --green:#2f7d5b;--red:#c0392b;--blue:#2b5c86;--amber:#c07d1e;--slate:#606365;
   --green-lo:rgba(47,125,91,.12);--red-lo:rgba(192,57,43,.12);
   --blue-lo:rgba(43,92,134,.12);--amber-lo:rgba(192,125,30,.12);
+  /* brand palette tokens — kept in sync with the Safety Tracker sibling (P16).
+     The REFINED PAGES / P8 layers below reference --violet directly. */
+  --violet:#6F328A;--violet-deep:#472358;--obsidian:#32183C;--stone:#606365;
+  --sp01:#744793;--sp02:#95569E;--sp03:#D079D1;--sp04:#FABCEF;
+  --skydepth:#033059;--sageflow:#56735A;--blushberry:#8C2F5B;--terrarose:#F2786D;--sunhaze:#F2B771;--skyline:#94A1B1;
   --brand-grad:linear-gradient(105deg,#32183C 0%,#472358 48%,#6F328A 100%);
   --shadow-sm:0 3px 16px -10px rgba(50,24,60,.30);
   --shadow-md:0 12px 30px -12px rgba(50,24,60,.28);
   --shadow-lg:0 24px 60px -14px rgba(50,24,60,.34),0 4px 14px -8px rgba(50,24,60,.2);
   --sidebar-w:272px;--header-h:58px;
 }
-body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg-base);color:var(--text-1);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg-base);color:var(--text-1);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;}
 .brand-text h1,.hp-title,.card-name,.proj-hdr-name,.modal-hdr h2,.dialog-title,.kpi-val,.krei-score-big,.doc-stat-val,.sb-stat-val,.card-visual .card-initial,.session-modal-logo{font-family:'Barlow Condensed',var(--font-body,inherit),sans-serif;font-weight:600;letter-spacing:0;}
 .hidden{display:none!important;}
 
 /* ── HEADER ─── */
 .header{height:var(--header-h);background:var(--brand-grad);border-bottom:1px solid rgba(0,0,0,.15);display:flex;align-items:center;padding:0 20px 0 0;flex-shrink:0;z-index:100;gap:0;}
 .header-brand{display:flex;align-items:center;height:100%;border-right:1px solid rgba(255,255,255,.12);padding:0 16px;width:var(--sidebar-w);flex-shrink:0;}
-.logo{width:34px;height:34px;border-radius:9px;flex-shrink:0;background:var(--brand-grad);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;letter-spacing:.4px;}
+.logo{width:34px;height:34px;border-radius:9px;flex-shrink:0;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;letter-spacing:.4px;}
 .brand-text{margin-left:10px;}
 .brand-text h1{font-size:13.5px;font-weight:700;letter-spacing:.3px;line-height:1.2;color:#fff;}
 .brand-text p{font-size:9.5px;color:rgba(255,255,255,.55);letter-spacing:.8px;text-transform:uppercase;margin-top:2px;}
@@ -969,7 +974,9 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .btn{padding:6px 14px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;gap:6px;font-family:inherit;}
 .btn-primary{background:var(--accent);color:#fff;}.btn-primary:hover{background:#5a2872;}.btn-primary:active{background:#4a1f5e;}
 .btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border);}.btn-ghost:hover{background:var(--bg-hover);color:var(--text-1);}
-.btn-ghost-dark{background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.25);}.btn-ghost-dark:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4);color:#fff;}
+/* Header sits on the purple brand gradient — ghost buttons need light, legible
+   fills there. Values kept in sync with the sibling's `.header .btn-ghost` (P16). */
+.btn-ghost-dark{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.4);}.btn-ghost-dark:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.6);color:#fff;}
 .sync-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:1px;background:rgba(255,255,255,.4);}
 .sync-dot.syncing{background:var(--amber);}
 .sync-dot.synced{background:var(--green);}
@@ -1088,7 +1095,9 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .tab-bar{display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:var(--bg-elevated);flex-shrink:0;overflow-x:auto;}
 .tab-btn{padding:11px 16px;font-size:11.5px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-3);font-family:inherit;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px;}
 .tab-btn:hover{color:var(--text-2);background:var(--bg-hover);}
-.tab-btn.active{color:var(--amber);border-bottom-color:var(--amber);}
+/* P16: was --amber. The sibling's detail tab bar highlights in --accent; amber
+   survives there only on `.safety-sub-btn`, so v1.3 mirrored the wrong bar. */
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
 .tab-badge{padding:1px 5px;border-radius:999px;font-size:9px;font-weight:700;background:var(--border-faint);color:var(--text-3);}
 .tab-badge.complete{background:var(--green-lo);color:var(--green);}
 .tab-content{flex:1;overflow-y:auto;}
@@ -1710,6 +1719,133 @@ body.verify-mode .fb-fab{display:none!important;}
 .fb-status-msg{font-size:11.5px;margin-top:8px;}
 .fb-status-msg.err{color:var(--red);}
 .fb-status-msg.ok{color:var(--green);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   P16 LAYER A — iOS-style polish. Ported from the Safety Tracker sibling to
+   bring both apps back to one visual language. Radius / shadow / motion only —
+   COLOUR TOKENS ARE UNTOUCHED. Appended last so it overrides the class
+   defaults above.
+
+   Note: the sibling's own copy of this layer exists to undo its `border-radius:0`
+   brand re-skin, which this app never received. A handful of selectors were
+   missed there and left square (.toast-item, .close-btn, .ms-date-inp,
+   .task-inp, scrollbar thumbs, .form-map-wrap) — those stay rounded here
+   deliberately; see P16 in PENDING_CHANGES.md.
+   ══════════════════════════════════════════════════════════════════════════ */
+html{ -webkit-tap-highlight-color:transparent; }
+body{ -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+*{ -webkit-tap-highlight-color:transparent; }
+
+/* smooth transitions on interactive things */
+.btn,.btn-sm,.btn-xs,.main-tab-btn,.tab-btn,.safety-sub-btn,.sb-filter,.sb-project,.drop-item,.doc-del-btn,
+select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.vp-eval-check,.vp-nav-btn,
+.project-card,.card-map-el,.status-pill,.risk-badge{
+  transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .22s ease,transform .12s cubic-bezier(.4,0,.2,1);
+}
+/* tap / press feedback */
+.btn:active,.btn-sm:active,.btn-xs:active,.main-tab-btn:active,.sb-filter:active,.safety-sub-btn:active,
+.vp-eval-check:active,.vp-nav-btn:active,.drop-item:active,.doc-del-btn:active{ transform:scale(.96); }
+/* The glass project card (P5, owner request) keeps its own radius/blur/shadow —
+   only the press feedback is adopted here. */
+.project-card:active{ transform:scale(.985); }
+
+/* rounded corners — buttons & controls */
+.btn{ border-radius:11px; } .btn-sm{ border-radius:10px; } .btn-xs{ border-radius:9px; }
+select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-input,.obs-cat-input,.obs-text,
+.date-map-select,.ms-date-inp,.task-inp{ border-radius:10px; }
+.drop-item{ border-radius:8px; }
+
+/* rounded corners + soft shadow — surfaces */
+.confirm-box{ border-radius:20px; }
+/* .moc-section-hdr is intentionally omitted — it's a header, not a surface, and
+   has no live call sites here since the v1.4 Safety-tab redirect. */
+.moc-card,.info-panel,.session-section,.crs-section,
+.vp-hero,.vp-section,.vp-hazard-accordion,.risk-table-wrap,.doc-table,.moc-overview-table{ border-radius:14px; }
+.vp-ctrl-card{ border-radius:12px; }
+.doc-stat,.risk-stat,.kpi-card,.sb-stat{ border-radius:12px; }
+
+/* rounded pills / badges / chips */
+.status-pill,.cat-pill,.risk-badge,.haz-status-badge,.pill,.chip,.sb-filter,.vp-eval-check,.vp-nav-btn{ border-radius:9px; }
+.sb-project{ border-radius:10px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   P16 LAYER B — REFINED PAGES. Accent-bar section headers, gapped/rounded/
+   elevated stat tiles, soft surface elevation and rounded table wraps.
+   Radius, shadow, spacing and elevation only — colour tokens untouched.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* — Section headers → 4px accent bar + solid title — */
+.sec-label,.info-panel-title,.sched-section-hdr{
+  display:flex;align-items:center;gap:9px;border-bottom:none;
+  color:var(--text-1);font-weight:800;letter-spacing:.5px;
+}
+.sec-label::before,.info-panel-title::before,.sched-section-hdr::before{
+  content:"";width:4px;height:14px;border-radius:3px;background:var(--violet);flex-shrink:0;
+}
+.sec-label::after{display:none;}            /* drop the old trailing hairline */
+.info-panel-title{margin-bottom:12px;}
+.sched-section-hdr{margin:0 0 12px;}
+
+/* — Stat strips → gapped tiles, each a rounded, softly-elevated card — */
+.doc-summary,.risk-summary-strip{
+  background:transparent;border:none;border-radius:0;overflow:visible;gap:10px;
+}
+.doc-stat,.risk-stat{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:12px;
+  padding:13px 15px;box-shadow:0 2px 10px -7px rgba(50,24,60,.30);
+  transition:box-shadow .2s ease,transform .12s ease;
+}
+.doc-stat:hover,.risk-stat:hover{box-shadow:0 8px 20px -12px rgba(50,24,60,.34);transform:translateY(-1px);}
+
+/* — Surface cards, panels & bars → soft elevation, consistent radius — */
+.moc-card,.info-panel,.krei-score-card,.gov-filter-bar,
+.st-import-box,.doc-table-wrap,.gov-table-wrap,.task-grid-wrap,.risk-table-wrap{
+  box-shadow:0 2px 10px -7px rgba(50,24,60,.25);
+}
+.info-panel,.krei-score-card,.gov-filter-bar,.st-import-box{border-radius:14px;}
+.doc-table-wrap,.gov-table-wrap,.task-grid-wrap,.risk-table-wrap{border-radius:14px;}
+.moc-card{padding:20px 22px;}
+.krei-score-card{padding:12px 14px;}
+
+/* — Tables → gentle row hover + comfortable header rhythm — */
+.doc-table tbody tr{transition:background .12s ease;}
+.doc-table tbody tr:hover td{background:var(--bg-hover);}
+.doc-table th,.moc-overview-table th,.gov-table th,.review-table th{padding-top:10px;padding-bottom:10px;}
+.moc-overview-table td,.gov-table td{padding-top:11px;padding-bottom:11px;}
+
+/* — Dashed import dropzone → matches the softer card language — */
+.st-import-box{padding:24px;}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   P16 LAYER C — SECTION CARDS (matches the sibling's P8 / V4.0 layer).
+   Each major inner-page section is a self-contained white card built by _p8():
+   a tinted header strip (violet accent bar + title, optional count badge)
+   capping a white body.
+   ══════════════════════════════════════════════════════════════════════════ */
+.p8card{ background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  box-shadow:var(--shadow-sm); overflow:hidden; margin:0 0 16px; }
+.p8hd{ display:flex; align-items:center; gap:10px; padding:12px 16px;
+  background:linear-gradient(180deg,#ffffff,var(--bg-elevated));
+  border-bottom:1px solid var(--border-faint);
+  font-size:11.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--text-1); }
+.p8hd::before{ content:""; width:4px; height:15px; border-radius:3px; background:var(--violet); flex:none; }
+.p8hd .p8cnt{ font-size:10.5px; font-weight:700; color:var(--violet);
+  background:var(--accent-lo); padding:2px 9px; border-radius:20px; text-transform:none; letter-spacing:0; }
+.p8hd .p8hd-right{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; flex:none; }
+.p8hd .p8act{ display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; font-weight:600; }
+.p8hd .p8act .btn{ text-transform:none; letter-spacing:0; }
+.p8bd{ padding:15px 16px; }
+.p8bd.flush{ padding:0; }                       /* edge-to-edge tables */
+.p8bd.flush > div[style*="overflow"]{ border:none!important; box-shadow:none!important; border-radius:0!important; background:transparent!important; }
+.p8bd.flush table{ width:100%; }
+.p8bd.flush thead th{ background:var(--bg-elevated); }
+.p8bd > .doc-summary:last-child, .p8bd > .risk-summary-strip:last-child{ margin-bottom:0; }
+@media (max-width:480px){
+  .p8bd{ padding:12px 12px; }
+  .p8hd{ padding:11px 13px; flex-wrap:wrap; }
+  .p8hd .p8hd-right{ flex-wrap:wrap; justify-content:flex-end; }
+  .p8-statgrid{ grid-template-columns:repeat(3,1fr)!important; }
+}
 </style>
 <!-- PptxGenJS 3.12.0 — inlined for offline use -->
 <script>
@@ -2261,7 +2397,7 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v3.0';
+const APP_VERSION  = 'v3.1';
 const APP_DATE     = '05 Aug 2026';
 const DEFAULT_CENTER = [24.9577, 46.6988];
 const DEFAULT_ZOOM   = 14;
@@ -3135,6 +3271,44 @@ function fmtDate(s) {
   return isNaN(d)?'—':d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
 }
 function esc(s) { return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'):''; }
+
+/* ── SECTION CARDS (P16 layer C) ─────────────────────────────────────────────
+   Wraps a major inner-page section in a self-contained white card: a tinted
+   header strip (violet accent bar + uppercase title, optional count badge and
+   actions) capping the body. Mirrors the sibling's _p8() so both apps build
+   sections the same way.
+
+   opts: { count, actions, collapse, flush }
+     count    — value for the pill badge on the right of the header
+     actions  — HTML for header-right controls; clicks don't toggle collapse
+     collapse — stable key; presence makes the header a collapse toggle
+     flush    — body padding removed, for edge-to-edge tables
+
+   `title` is interpolated as HTML (callers pass markup such as a status dot),
+   so callers MUST esc() any user-supplied text — same contract as the sibling.
+   Collapse state is per-session only, deliberately not persisted.
+   ──────────────────────────────────────────────────────────────────────────── */
+const _p8Collapsed = {};
+function _p8Toggle(key){
+  _p8Collapsed[key] = !_p8Collapsed[key];
+  const bd=document.getElementById('p8bd-'+key);
+  const ic=document.getElementById('p8chev-'+key);
+  if(bd) bd.style.display=_p8Collapsed[key]?'none':'';
+  if(ic) ic.style.transform=_p8Collapsed[key]?'rotate(-90deg)':'';
+}
+function _p8(title, body, opts){
+  opts=opts||{};
+  const cnt=(opts.count!=null&&opts.count!=='')?`<span class="p8cnt">${opts.count}</span>`:'';
+  const act=opts.actions?`<span class="p8act" onclick="event.stopPropagation()">${opts.actions}</span>`:'';
+  const key=opts.collapse||'';
+  const isC=key?!!_p8Collapsed[key]:false;
+  const chev=key?`<svg id="p8chev-${key}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform .2s;flex:none;${isC?'transform:rotate(-90deg);':''}"><polyline points="6 9 12 15 18 9"/></svg>`:'';
+  const right=(cnt||act||chev)?`<span class="p8hd-right">${cnt}${act}${chev}</span>`:'';
+  const hdAttrs=key?` style="cursor:pointer;user-select:none;" onclick="_p8Toggle('${key}')"`:'';
+  const bdId=key?` id="p8bd-${key}"`:'';
+  const bdStyle=isC?' style="display:none;"':'';
+  return `<div class="p8card"><div class="p8hd"${hdAttrs}>${title}${right}</div><div${bdId} class="p8bd${opts.flush?' flush':''}"${bdStyle}>${body}</div></div>`;
+}
 
 /* ── FEEDBACK ── */
 let fbScreenshotDataUrl = null;
@@ -4178,8 +4352,8 @@ function buildKPIDetailHTML(num, p, k) {
     return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:${bg};color:${c};">${RAG_LABEL[r]}</span>`;
   };
 
-  const section = (title, html) =>
-    `<div style="margin-bottom:20px;"><div class="sec-label" style="margin-bottom:10px;">${title}</div>${html}</div>`;
+  // P16: every KPI-detail section is a section card. Callers pass plain titles.
+  const section = (title, html) => _p8(title, html);
 
   // ── KPI 1: PSQS ───────────────────────────────────────────────────────────
   if (num === 1) {
@@ -5348,12 +5522,13 @@ function buildDocTabHTML(p, stageKey, _inner=false) {
         Override CRS
        </button>`;
 
+  // P16: section cards. Controls stay inside each body rather than moving into
+  // the card header — this is a re-skin, not a re-layout.
   const _docInner = `
-    <div class="sec-label">${stageCfg.label} — Document Register</div>
-    ${summaryHtml}
+    ${summaryHtml ? _p8(`${esc(stageCfg.label)} — Document Register`, summaryHtml) : ''}
     ${crsSection}
     ${analyticsSection}
-    <div>
+    ${_p8('Documents', `
       <div class="doc-actions">
         <p style="font-size:11px;color:var(--text-3);">
           ✓ Check to include a document · Click name to rename ·
@@ -5386,7 +5561,7 @@ function buildDocTabHTML(p, stageKey, _inner=false) {
           <tbody>${rows||`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;">${isCrs?'No documents yet — upload a CRS revision above':'No documents — click "Add Row" or "Override CRS"'}</td></tr>`}</tbody>
         </table>
       </div>
-    </div>`;
+    `)}`;
   return _inner ? _docInner : `<div class="doc-body">${_docInner}</div>`;
 }
 
@@ -6178,8 +6353,7 @@ function buildReviewCycleHTML(p, stageKey, _hideSummary=false) {
   }).join('');
 
   const thS = 'padding:5px 8px;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);font-weight:600;';
-  return `<div>
-    <div class="sec-label" style="margin-bottom:12px;">Design Package Review Cycles</div>
+  return _p8('Design Package Review Cycles', `
     ${summary}
     <div style="overflow-x:auto;">
       <table class="review-table">
@@ -6206,7 +6380,7 @@ function buildReviewCycleHTML(p, stageKey, _hideSummary=false) {
         Add Response
       </button>
     </div>
-  </div>`;
+  `);
 }
 
 function buildUnifiedPRCHeader(p, stageKey) {
@@ -6232,9 +6406,8 @@ function buildUnifiedPRCHeader(p, stageKey) {
   const closurePct = hasCommentData ? Math.round(totalClosed/totalRaised*100) : 0;
   const pctColor = closurePct===100?'color:#1a7a4a;':closurePct>=60?'color:#c87000;':'';
   const docsCompleteColor = sum.complete===sum.selected&&sum.selected>0?'color:#1a7a4a;':'';
-  return `<div id="prc-unified-header" style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px;">
-    <div style="display:flex;flex-direction:column;gap:5px;">
-      <div class="sec-label">Overview</div>
+  return `<div id="prc-unified-header">
+    ${_p8('Overview', `
       <div class="doc-summary" style="grid-template-columns:repeat(5,1fr);">
         <div class="doc-stat"><div class="doc-stat-val">${rounds||'&#8212;'}</div><div class="doc-stat-lbl">Submissions</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="font-size:15px;line-height:1.2;">${firstSubDate?fmtDate(firstSubDate):'&#8212;'}</div><div class="doc-stat-lbl">First Submission</div></div>
@@ -6242,9 +6415,8 @@ function buildUnifiedPRCHeader(p, stageKey) {
         <div class="doc-stat"><div class="doc-stat-val">${avgAimo!==null?avgAimo+'d':'&#8212;'}</div><div class="doc-stat-lbl">Avg. AIMO Review</div></div>
         <div class="doc-stat"><div class="doc-stat-val">${avgKsia!==null?avgKsia+'d':'&#8212;'}</div><div class="doc-stat-lbl">Avg. KSIA Action</div></div>
       </div>
-    </div>
-    ${hasCommentData?`<div style="display:flex;flex-direction:column;gap:5px;">
-      <div class="sec-label">Comment Status</div>
+    `)}
+    ${hasCommentData?_p8('Comment Status', `
       <div class="doc-summary" style="grid-template-columns:repeat(5,1fr);">
         <div class="doc-stat"><div class="doc-stat-val">${totalRaised}</div><div class="doc-stat-lbl">Total Raised</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="${pctColor}">${closurePct}%</div><div class="doc-stat-lbl">Closed %</div></div>
@@ -6252,7 +6424,7 @@ function buildUnifiedPRCHeader(p, stageKey) {
         <div class="doc-stat"><div class="doc-stat-val" style="color:#b85000;">${totalRaised>0?Math.round(sum.classC/totalRaised*100)+'%':'—'}</div><div class="doc-stat-lbl">Code C</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="color:#c0392b;">${totalRaised>0?Math.round(sum.classD/totalRaised*100)+'%':'—'}</div><div class="doc-stat-lbl">Code D</div></div>
       </div>
-    </div>`:''}
+    `):''}
   </div>`;
 }
 
@@ -6336,10 +6508,9 @@ function buildDocRegistryPanel(p, stageKey) {
       <div class="doc-reg-cell" style="justify-content:flex-end;"></div>
     </div>`).join('');
 
-  return `<div class="doc-reg-panel">
-    <div class="doc-reg-hdr">
-      <span class="doc-reg-hdr-title">PSQS Document Registry${ptsNote}</span>
-      <div style="display:flex;gap:6px;">
+  // P16: section card. The header controls move into the card's actions slot; the
+  // "N pts total" note rides alongside them so the title stays clean.
+  const _regActions = `${ptsNote}
         ${reg.length===0?`<button class="btn btn-ghost btn-xs" onclick="seedRegistryFromCRS('${stageKey}')">
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           Seed from CRS
@@ -6347,9 +6518,8 @@ function buildDocRegistryPanel(p, stageKey) {
         <button class="btn btn-ghost btn-xs" onclick="openDocRegistry('${stageKey}')">
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           ${reg.length ? 'Edit Registry' : 'Configure'}
-        </button>
-      </div>
-    </div>
+        </button>`;
+  return _p8('PSQS Document Registry', `
     ${reg.length ? `
       <div class="doc-reg-row" style="background:var(--bg-elevated);">
         <div class="doc-reg-cell hdr">Document</div>
@@ -6360,7 +6530,7 @@ function buildDocRegistryPanel(p, stageKey) {
       </div>
       ${rows}
     ` : `<div class="doc-reg-empty">No documents configured. Click "Configure" to set up the registry — PSQS will auto-calculate once documents are added.</div>`}
-  </div>`;
+  `, {actions:_regActions});
 }
 
 function openDocRegistry(stageKey) {
@@ -6542,13 +6712,12 @@ function seedRegistryFromCRS(stageKey) {
 function buildDesignPkgReviewHTML(p, stageKey) {
   const stageCfg = STAGE_DOCS[stageKey];
   const docInner = buildDocTabHTML(p, stageKey, true);
+  // P16: the border-top separator is gone — each section is its own card now.
   return `<div class="doc-body">
     ${buildUnifiedPRCHeader(p, stageKey)}
     ${buildDocRegistryPanel(p, stageKey)}
     ${buildReviewCycleHTML(p, stageKey, true)}
-    <div style="border-top:2px solid var(--border);margin-top:28px;padding-top:22px;">
-      ${docInner}
-    </div>
+    ${docInner}
   </div>`;
 }
 
@@ -6575,7 +6744,7 @@ function buildCommPkgReviewHTML(p, stageKey) {
     ${buildUnifiedPRCHeader(p, stageKey)}
     ${buildDocRegistryPanel(p, stageKey)}
     ${buildReviewCycleHTML(p, stageKey, true)}
-    <div style="border-top:2px solid var(--border);margin-top:28px;padding-top:22px;">
+    <div style="margin-top:22px;">
       ${tabBar}
       <div id="comm-docs-panel" style="${active==='docs'?'':'display:none;'}">${docsInner}</div>
       <div id="comm-aips-panel" style="${active==='aips'?'':'display:none;'}">${buildAipsEditCard(p)}</div>
@@ -6788,14 +6957,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
     </tr>`;
   }).join('');
 
-  const verifHtml = `
-    <div class="doc-actions" style="margin-bottom:12px;">
-      <div class="sec-label" style="flex:1;">Risk Verification</div>
-      ${verifHazards.length ? `<button class="btn btn-ghost btn-xs" onclick="openVerifyPage('${stageKey}',0)">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        Open Verification Form ↗
-      </button>` : ''}
-    </div>
+  const verifHtml = _p8('Risk Verification', `
     ${verifHazards.length ? `${verifSummary}
       <div class="risk-table-wrap">
         <table class="risk-table">
@@ -6812,7 +6974,10 @@ function buildRiskRegisterStageHTML(p, stageKey) {
         </table>
       </div>` :
     `<div style="font-size:12px;color:var(--text-3);padding:20px;text-align:center;border:1px dashed var(--border);border-radius:8px;">Import a Risk Assessment above to begin verification.</div>`}
-  `;
+  `, {actions: verifHazards.length ? `<button class="btn btn-ghost btn-xs" onclick="openVerifyPage('${stageKey}',0)">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Open Verification Form ↗
+      </button>` : ''});
 
   // ── Observation Tracker section ─────────────────────────────
   const obs = sd.observations || [];
@@ -6905,14 +7070,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
       <div class="doc-stat"><div class="doc-stat-val" style="color:var(--red);">${openCnt}</div><div class="doc-stat-lbl">Open</div></div>
       <div class="doc-stat"><div class="doc-stat-val" style="color:var(--green);">${teamObs.filter(o=>o.status==='closed').length}</div><div class="doc-stat-lbl">Closed</div></div>
     </div>`:'';
-    return `<div>
-      <div class="doc-actions" style="margin-bottom:10px;">
-        <div class="sec-label" style="flex:1;">${teamLabel} Observations</div>
-        <button class="btn btn-ghost btn-xs" onclick="addObs('${stageKey}','${teamKey}')">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Observation
-        </button>
-      </div>
+    return _p8(`${esc(teamLabel)} Observations`, `
       ${summary}
       ${teamObs.length?`<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
         <table class="doc-table obs-table" style="min-width:900px;">
@@ -6929,7 +7087,10 @@ function buildRiskRegisterStageHTML(p, stageKey) {
           <tbody>${rows}</tbody>
         </table>
       </div>`:`<div style="text-align:center;padding:24px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">No observations recorded — click "Add Observation" to start.</div>`}
-    </div>`;
+    `, {count: teamObs.length||'', actions:`<button class="btn btn-ghost btn-xs" onclick="addObs('${stageKey}','${teamKey}')">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Observation
+        </button>`});
   }
 
   const obsSummary = safetyObs.length ? `<div class="doc-summary" style="margin-bottom:14px;">
@@ -6939,14 +7100,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
     <div class="doc-stat"><div class="doc-stat-val">${safetyObs.filter(o=>o.linkedHazard&&o.linkedHazard!=='').length}</div><div class="doc-stat-lbl">Linked to RA</div></div>
   </div>` : '';
 
-  const obsTableHtml = `<div>
-    <div class="doc-actions" style="margin-bottom:10px;">
-      <div class="sec-label" style="flex:1;">Safety Observation Register</div>
-      <button class="btn btn-ghost btn-xs" onclick="addObs('${stageKey}','safety')">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Observation
-      </button>
-    </div>
+  const obsTableHtml = _p8('Safety Observation Register', `
     ${obsSummary}
     ${safetyObs.length ? `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
       <table class="doc-table obs-table" style="min-width:1100px;">
@@ -6967,7 +7121,10 @@ function buildRiskRegisterStageHTML(p, stageKey) {
     `<div style="text-align:center;padding:30px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">
       No safety observations recorded yet — click "Add Observation" to start tracking.
     </div>`}
-  </div>`;
+  `, {count: safetyObs.length||'', actions:`<button class="btn btn-ghost btn-xs" onclick="addObs('${stageKey}','safety')">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Observation
+      </button>`});
 
   const opsObsHtml = buildSimpleObsTable('operations', opsObs, 'Operations');
   const engObsHtml = buildSimpleObsTable('engineering', engObs, 'Engineering');
@@ -7072,24 +7229,19 @@ function buildRiskRegisterStageHTML(p, stageKey) {
     cStatus = lateStart ? '⚠ Late Start' : '○ Not Started';
     cStatusColor = lateStart ? 'var(--red)' : 'var(--text-3)';
   }
-  const constructionMetric = `
-    <div class="info-panel" style="margin-bottom:0;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div class="info-panel-title" style="flex:1;margin:0;">Construction Schedule</div>
-        <button class="btn btn-ghost btn-xs" onclick="setExecSubTab('${stageKey}','construction')">View Schedule →</button>
-      </div>
+  const constructionMetric = _p8('Construction Schedule', `
       <div class="doc-summary" style="grid-template-columns:repeat(4,1fr);">
         <div class="doc-stat"><div class="doc-stat-val" style="color:${cStatusColor};">${cStatus}</div><div class="doc-stat-lbl">Status</div></div>
         <div class="doc-stat"><div class="doc-stat-val">${cPlannedStart||'—'}</div><div class="doc-stat-lbl">Planned Start</div></div>
         <div class="doc-stat"><div class="doc-stat-val">${cActualStart||'—'}</div><div class="doc-stat-lbl">Actual Start</div></div>
         <div class="doc-stat"><div class="doc-stat-val">${cActualEnd||cPlannedEnd||'—'}</div><div class="doc-stat-lbl">${cActualEnd?'Actual End':'Planned End'}</div></div>
       </div>
-    </div>`;
+    `, {actions:`<button class="btn btn-ghost btn-xs" onclick="setExecSubTab('${stageKey}','construction')">View Schedule →</button>`});
 
-  const overviewMetrics = `<div style="display:flex;flex-direction:column;gap:20px;">
+  // P16: gap:0 — each p8 card carries its own 16px bottom margin.
+  const overviewMetrics = `<div style="display:flex;flex-direction:column;gap:0;">
     ${constructionMetric}
-    <div>
-      <div class="sec-label" style="margin-bottom:8px;">Risk Assessment</div>
+    ${_p8('Risk Assessment', `
       <div class="doc-summary" style="grid-template-columns:repeat(5,1fr);">
         <div class="doc-stat"><div class="doc-stat-val">${hazards2.length||'—'}</div><div class="doc-stat-lbl">Total Hazards</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="color:var(--green);">${statuses2.filter(s=>s==='compliant').length||'—'}</div><div class="doc-stat-lbl">Verified</div></div>
@@ -7097,16 +7249,15 @@ function buildRiskRegisterStageHTML(p, stageKey) {
         <div class="doc-stat"><div class="doc-stat-val" style="color:var(--red);">${statuses2.filter(s=>s==='noncompliant').length||'—'}</div><div class="doc-stat-lbl">Non-Compliant</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="color:var(--text-3);">${statuses2.filter(s=>s==='unverified').length||'—'}</div><div class="doc-stat-lbl">Unverified</div></div>
       </div>
-    </div>
-    <div>
-      <div class="sec-label" style="margin-bottom:8px;">Observations</div>
+    `)}
+    ${_p8('Observations', `
       <div class="doc-summary" style="grid-template-columns:repeat(4,1fr);">
         <div class="doc-stat"><div class="doc-stat-val">${obs.length||'—'}</div><div class="doc-stat-lbl">Total</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="color:var(--red);">${obsOpen||'—'}</div><div class="doc-stat-lbl">Open</div></div>
         <div class="doc-stat"><div class="doc-stat-val" style="color:var(--green);">${obsClosed||'—'}</div><div class="doc-stat-lbl">Closed</div></div>
         <div class="doc-stat"><div class="doc-stat-val">${obs.filter(o=>o.linkedHazard&&o.linkedHazard!=='').length||'—'}</div><div class="doc-stat-lbl">Linked to RA</div></div>
       </div>
-    </div>
+    `)}
     ${(()=>{
       const _f=_obsOverviewFilter[stageKey]||'all';
       const _allObs=[...obs].sort((a,b)=>new Date(b.dateObservation||b.dateReport||0)-new Date(a.dateObservation||a.dateReport||0));
@@ -7136,19 +7287,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
         </tr>`;
       }).join('');
       const _pill=(f,label,count)=>`<button onclick="setObsFilter('${stageKey}','${f}')" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:12px;border:1px solid ${_f===f?'var(--accent)':'var(--border)'};background:${_f===f?'var(--accent)':'transparent'};color:${_f===f?'#fff':'var(--text-2)'};cursor:pointer;">${label} <span style="opacity:.75;">${count}</span></button>`;
-      return `<div>
-        <div class="doc-actions" style="margin-bottom:10px;gap:8px;flex-wrap:wrap;">
-          <div class="sec-label" style="flex:1;min-width:120px;">All Observations</div>
-          <div style="display:flex;gap:4px;">
-            ${_pill('all','All',obs.length)}
-            ${_pill('open','Open',obsOpen)}
-            ${_pill('closed','Closed',obsClosed)}
-          </div>
-          <button class="btn btn-ghost btn-xs" onclick="exportObsExcel('${p.id}','${stageKey}')">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export Excel
-          </button>
-        </div>
+      return _p8('All Observations', `
         ${_filtered.length?`<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
           <table class="doc-table" style="min-width:900px;">
             <thead><tr>
@@ -7163,7 +7302,15 @@ function buildRiskRegisterStageHTML(p, stageKey) {
             <tbody>${_rows}</tbody>
           </table>
         </div>`:`<div style="text-align:center;padding:24px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">No observations match the selected filter.</div>`}
-      </div>`;
+      `, {actions:`<span style="display:flex;gap:4px;">
+            ${_pill('all','All',obs.length)}
+            ${_pill('open','Open',obsOpen)}
+            ${_pill('closed','Closed',obsClosed)}
+          </span>
+          <button class="btn btn-ghost btn-xs" onclick="exportObsExcel('${p.id}','${stageKey}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Excel
+          </button>`});
     })()}
   </div>`;
 
@@ -7222,10 +7369,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
       <td style="text-align:center;"><button class="doc-del-btn" onclick="deleteVerifLogRecord('${stageKey}','${r.id}')" title="Remove">×</button></td>
     </tr>`;
   }).join('');
-  const verifLogHtml = `
-    <div class="doc-actions" style="margin-bottom:10px;">
-      <div class="sec-label" style="flex:1;">Risk Verification History</div>
-    </div>
+  const verifLogHtml = _p8('Risk Verification History', `
     <div class="doc-summary" style="margin-bottom:14px;grid-template-columns:repeat(2,1fr);">
       <div class="doc-stat"><div class="doc-stat-val">${vlRecs.length||'—'}</div><div class="doc-stat-lbl">Checks Completed</div></div>
       <div class="doc-stat"><div class="doc-stat-val">${lastRec?.date||'—'}</div><div class="doc-stat-lbl">Last Check</div></div>
@@ -7244,7 +7388,8 @@ function buildRiskRegisterStageHTML(p, stageKey) {
         </tr></thead>
         <tbody>${vlRows}</tbody>
       </table>
-    </div>` : `<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">No verification checks logged yet — use "Complete &amp; Log" on the verification form to record a check.</div>`}`;
+    </div>` : `<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">No verification checks logged yet — use "Complete &amp; Log" on the verification form to record a check.</div>`}
+  `, {count: vlRecs.length||''});
 
   return `<div class="doc-body">
     ${tabBar}
@@ -7255,19 +7400,10 @@ function buildRiskRegisterStageHTML(p, stageKey) {
       ${constructionSchedulePanel}
     </div>
     <div id="exec-safety-panel" style="${active==='safety'?'':'display:none;'}">
-      <div class="doc-actions" style="margin-bottom:14px;">
-        <div class="sec-label" style="flex:1;">Risk Assessment</div>
-      </div>
-      ${registerHtml}
-      <div style="border-top:2px solid var(--border);margin-top:28px;padding-top:22px;">
-        ${verifHtml}
-      </div>
-      <div style="border-top:2px solid var(--border);margin-top:28px;padding-top:22px;">
-        ${verifLogHtml}
-      </div>
-      <div style="border-top:2px solid var(--border);margin-top:28px;padding-top:22px;">
-        ${obsTableHtml}
-      </div>
+      ${_p8('Risk Assessment', registerHtml)}
+      ${verifHtml}
+      ${verifLogHtml}
+      ${obsTableHtml}
     </div>
     <div id="exec-operations-panel" style="${active==='operations'?'':'display:none;'}">
       ${opsObsHtml}
@@ -8539,10 +8675,8 @@ function buildSubmissionStageHTML(p, stageKey) {
       </div>`
     : '';
 
-  const fixedSection=`<div class="accept-date-strip">
-    <div class="sec-label" style="margin-bottom:10px;font-size:10px;">Submission Milestones</div>
-    <div class="accept-date-grid">${fixedDateFields}${firstSubmitCard}${acceptCard}</div>
-  </div>`;
+  const fixedSection=_p8('Submission Milestones',
+    `<div class="accept-date-grid">${fixedDateFields}${firstSubmitCard}${acceptCard}</div>`);
 
   // ── Summary strip ─────────────────────────────────────────────────────────
   const _totalRaised=log.reduce((s,r)=>s+(r.commentsRaised||0),0);
@@ -8596,14 +8730,7 @@ function buildSubmissionStageHTML(p, stageKey) {
     </tr>`;
   }).join('');
 
-  const roundTableHtml=`<div>
-    <div class="doc-actions" style="margin-bottom:10px;">
-      <div class="sec-label" style="flex:1;">GACA Acceptance Cycle</div>
-      <button class="btn btn-ghost btn-xs" onclick="addSubRound('${stageKey}')">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Round
-      </button>
-    </div>
+  const roundTableHtml=_p8('GACA Acceptance Cycle', `
     <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
       <table class="doc-table" style="min-width:920px;">
         <thead><tr>
@@ -8622,7 +8749,10 @@ function buildSubmissionStageHTML(p, stageKey) {
       </table>
     </div>
     <p style="font-size:10px;color:var(--text-3);margin-top:6px;">Repeat Steps 3 &amp; 4 (Submission → Response) until GACA Acceptance is received. Set status to <strong>Accepted</strong> on the final round.</p>
-  </div>`;
+  `, {count: log.length||'', actions:`<button class="btn btn-ghost btn-xs" onclick="addSubRound('${stageKey}')">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Round
+      </button>`});
 
   // ── Per-document comment tally (computed from gacaComments.docRef) ──────────
   const _allCmts=log.flatMap(r=>r.gacaComments||[]);
@@ -8645,8 +8775,7 @@ function buildSubmissionStageHTML(p, stageKey) {
       <td style="text-align:center;font-size:12px;font-weight:700;color:#1a7a4a;">${closed}</td>
       <td style="text-align:center;font-size:12px;font-weight:700;color:${pctColor};">${pct!=null?pct+'%':'—'}</td></tr>`;
   }).join('');
-  const docTableHtml=`<div style="margin-top:24px;">
-    <div class="sec-label" style="margin-bottom:8px;">Comments by Document<span style="margin-left:8px;font-size:9px;font-weight:400;color:var(--text-3);">auto-tallied from assigned comments</span></div>
+  const docTableHtml=_p8('Comments by Document', `
     ${_docList.filter(d=>d.enabled).length?`<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
       <table class="doc-table" style="min-width:520px;">
         <thead><tr>
@@ -8659,11 +8788,10 @@ function buildSubmissionStageHTML(p, stageKey) {
         <tbody>${_docTallyRows||'<tr><td colspan="5" style="text-align:center;padding:14px;color:var(--text-3);font-size:12px;">No comments assigned to documents yet.</td></tr>'}</tbody>
       </table>
     </div>`:`<div style="text-align:center;padding:16px;color:var(--text-3);font-size:12px;border:1px dashed var(--border);border-radius:8px;">Document list appears here once documents are added in the <strong style="color:var(--text-2);">Package Review</strong> tab.</div>`}
-  </div>`;
+  `, {actions:`<span style="font-size:9px;font-weight:400;color:var(--text-3);text-transform:none;letter-spacing:0;">auto-tallied from assigned comments</span>`});
 
   return `<div class="doc-body">
-    <div class="sec-label">${stageCfg.label}</div>
-    ${summaryHtml}
+    ${_p8(esc(stageCfg.label), summaryHtml)}
     ${fixedSection}
     ${roundTableHtml}
     ${docTableHtml}
@@ -9091,13 +9219,9 @@ function buildCrsHistorySection(p, stageKey) {
   const sorted=[...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
 
   if (!sorted.length) {
-    return `<div class="crs-section">
-      <div class="crs-section-hdr">
-        <span class="sec-label" style="margin:0;">CRS Revision History</span>
-        <button class="btn btn-ghost btn-xs" onclick="openCrsUpload('${stageKey}')">+ Upload First Revision</button>
-      </div>
-      <div class="crs-empty">No CRS revisions uploaded yet. Upload the first CRS to start tracking.</div>
-    </div>`;
+    return _p8('CRS Revision History',
+      `<div class="crs-empty">No CRS revisions uploaded yet. Upload the first CRS to start tracking.</div>`,
+      {actions:`<button class="btn btn-ghost btn-xs" onclick="openCrsUpload('${stageKey}')">+ Upload First Revision</button>`});
   }
 
   const nodes=sorted.map((rev,i)=>{
@@ -9124,13 +9248,11 @@ function buildCrsHistorySection(p, stageKey) {
     </div>`;
   }).join('');
 
-  return `<div class="crs-section">
-    <div class="crs-section-hdr">
-      <span class="sec-label" style="margin:0;">CRS Revision History <span style="font-size:11px;font-weight:400;color:var(--text-3);">(${sorted.length} revision${sorted.length!==1?'s':''})</span></span>
-      <button class="btn btn-ghost btn-xs" onclick="openCrsUpload('${stageKey}')">+ Upload Revision</button>
-    </div>
-    <div class="crs-tl-outer"><div class="crs-tl">${nodes}</div></div>
-  </div>`;
+  // The "(N revisions)" suffix becomes the header count pill — the p8 idiom.
+  return _p8('CRS Revision History',
+    `<div class="crs-tl-outer"><div class="crs-tl">${nodes}</div></div>`,
+    {count:`${sorted.length} revision${sorted.length!==1?'s':''}`,
+     actions:`<button class="btn btn-ghost btn-xs" onclick="openCrsUpload('${stageKey}')">+ Upload Revision</button>`});
 }
 
 function buildDelayAnalyticsHTML(p, stageKey) {
@@ -9188,11 +9310,7 @@ function buildDelayAnalyticsHTML(p, stageKey) {
     </tr>`;
   }).join('');
 
-  return `<div class="crs-section">
-    <div class="crs-section-hdr" style="margin-bottom:12px;">
-      <span class="sec-label" style="margin:0;">Delay Analytics</span>
-      <span style="font-size:10px;color:var(--text-3);">Green ≤7d · Amber ≤21d · Red >21d</span>
-    </div>
+  return _p8('Delay Analytics', `
     <div class="analytics-grid">
       <!-- Round-trip times -->
       <div class="info-panel">
@@ -9236,7 +9354,7 @@ function buildDelayAnalyticsHTML(p, stageKey) {
         </table>
       </div>
     </div>`:''}
-  </div>`;
+  `, {actions:`<span style="font-size:10px;color:var(--text-3);font-weight:400;">Green &#8804;7d &#183; Amber &#8804;21d &#183; Red &gt;21d</span>`});
 }
 
 /* ══════════════════════════════════════════════════
@@ -10544,16 +10662,10 @@ function buildTaskGridHTML(p) {
 function buildProjectScheduleHTML(p) {
   calcTaskDates(p);
 
-  return `
-    <div style="margin-bottom:22px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap;">
-        <div>
-          <div class="sched-section-hdr">Task Schedule</div>
-          <div style="font-size:11.5px;color:var(--text-3);">Build the task chain — forecast dates cascade automatically. Link a task to a milestone to drive its date.</div>
-        </div>
-      </div>
+  return _p8('Task Schedule', `
+      <div style="font-size:11.5px;color:var(--text-3);margin-bottom:14px;">Build the task chain — forecast dates cascade automatically. Link a task to a milestone to drive its date.</div>
       <div id="proj-task-grid-wrap">${buildTaskGridHTML(p)}</div>
-    </div>`;
+  `);
 }
 
 /* ══════════════════════════════════════════════════
