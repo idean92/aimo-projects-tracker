@@ -3,6 +3,55 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v4.1 — 06 Aug 2026
+- **New: three-level project hierarchy — P16 phase 2** (ships together with v4.0
+  below; the two are one feature split across two approvals). Mirrors the Safety
+  Tracker's **program → project → sub-project** structure, so the two apps show
+  the same shape. **Not deployed** — `public/index.html` untouched, awaiting an
+  independent review then an explicit "ship it".
+  - **Hierarchy helpers** — `isSubProject()`, `parentProjectOf()`,
+    `subProjectsOf()`, `effectiveProgram()`, `topLevelProjects()`,
+    `familyMilestones()`, `orderByHierarchy()`. `parentProjectId` points at a
+    **project**, never a MOC — the Safety Tracker resolves the MOC linkage and
+    publishes a project id, so nothing here needs to understand MOCs.
+  - **Program inheritance.** A sub-project with no program of its own inherits
+    its parent's, matching the Safety Tracker's `effectiveProgram()`. Without it
+    a real record (*KSIA Enabling Works 2 – Addendum 1*, which has no program on
+    either side) would render orphaned.
+  - **Sidebar and homepage cards** now nest three levels. Sub-projects sort
+    directly after their parent; in the card grid they carry a "↳ Sub-project of
+    …" label rather than being indented, since cards live in a grid.
+  - ⚠️ **Two deliberately different behaviours** (guard comments are in the code
+    at `calcKPIs()` and the hierarchy block — please don't "align" them):
+    - **KPIs: a sub-project scores independently**, as its own unit. `calcKPIs()`
+      reads only its own project's `stageDocs` and is unchanged.
+    - **Schedule + executive report: a sub-project folds into its parent's bar.**
+      It gets no row or slide of its own.
+    This split is the owner's explicit decision, and differs on purpose from the
+    Safety Tracker, which rolls up everywhere.
+  - **Folding rule** (`familyMilestones()`), per milestone: baseline/planned take
+    the **earliest** across the family; actual takes the **latest**, and only once
+    every family member that planned that milestone has completed it. A parent
+    whose addendum is still open is not finished, so reporting it complete would
+    overstate progress. Implemented by handing the schedule and report shallow
+    render-only clones, so every `p.milestones` / `getStatus` / `getProgress` read
+    folds automatically instead of each call site having to remember.
+  - **New "Parent Project" field** on the add/edit form. Only top-level projects
+    are offered, capping the tree at three levels (the same depth the Safety
+    Tracker allows, where an addendum may only point at a non-addendum MOC); self
+    and descendants are excluded so a cycle can't be built.
+  - **Deleting a parent promotes its sub-projects** to top level rather than
+    orphaning them, with the count shown in the confirm dialog — a dangling
+    `parentProjectId` would otherwise keep being published to the registry.
+  - Cycle guards throughout: `effectiveProgram()` and `orderByHierarchy()`
+    terminate on a malformed parent chain, and `orderByHierarchy()` appends any
+    leftovers flat so a project can never silently vanish from the list.
+  - `migrateProject()` defaults `parentProjectId` to null, so an existing session
+    upgrades with no data wipe.
+  - 26 new logic tests (69 total across both apps) — inheritance, cycles,
+    ordering, filtered-out parents, folding rules, and the Safety-side
+    parent-authority fix. All passing.
+
 ## v4.0 — 06 Aug 2026
 - **New: cross-tracker project registry — phase 1 of 2** (P16 here; **P36** in
   the `aimo-safety-tracker` repo — the two ship together). Owner request,
