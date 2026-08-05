@@ -2435,7 +2435,7 @@ function lsSet(key, value) {
     if (_storageWarned) {
       _storageWarned = false;
       const dot = document.getElementById('sessionDirtyDot');
-      if (dot) dot.style.background = '';
+      if (dot) { dot.style.background = 'var(--amber)'; dot.title = 'You have changes that haven’t been exported to a Session file yet'; }
     }
     return true;
   } catch (e) {
@@ -2461,7 +2461,7 @@ function setBackupDirty(v) {
   const dot = document.getElementById('sessionDirtyDot');
   if (dot) dot.style.display = v ? 'inline-block' : 'none';
 }
-function saveProjects() { lsSet(STORAGE_KEY, state.projects); setBackupDirty(true); }
+function saveProjects() { saveTimer = null; lsSet(STORAGE_KEY, state.projects); setBackupDirty(true); }
 function debouncedSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveProjects, 600); }
 // Safe localStorage read — returns `fallback` on a missing key OR corrupted/unparseable JSON.
 function lsGet(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return (v===null||v===undefined)?fallback:v; } catch(e) { return fallback; } }
@@ -9978,7 +9978,8 @@ function deriveMilestoneDates(p) {
   // L10: "first round" by actual date, not array position — rounds entered out of order
   // previously gave this milestone a different first-submission date than KPI 5 uses (which
   // already sorts by dateSubmitted). Sort a copy; never mutate the stored log.
-  const sortedDesignLog = [...designLog].sort((a, b) => (a.dateSubmitted || a.dateCandC || '').localeCompare(b.dateSubmitted || b.dateCandC || ''));
+  const sortedDesignLog = designLog.filter(r => r.dateSubmitted || r.dateCandC)
+    .sort((a, b) => (a.dateSubmitted || a.dateCandC).localeCompare(b.dateSubmitted || b.dateCandC));
   const firstDesignSub = (sortedDesignLog[0] && (sortedDesignLog[0].dateSubmitted || sortedDesignLog[0].dateCandC)) || null;
   apply('gaca_design_submission', 'actual', firstDesignSub, 'GACA Design Submission → Actual (First Submission)');
 
@@ -10159,9 +10160,20 @@ function deriveAndSave(p) {
 // itself stays synchronous for discrete-action callers (add/delete row, checkbox toggle,
 // import) where an immediate save + toast is expected.
 let _deriveAndSaveTimer = null;
+let _deriveAndSavePending = null;
 function debouncedDeriveAndSave(p) {
   clearTimeout(_deriveAndSaveTimer);
-  _deriveAndSaveTimer = setTimeout(() => deriveAndSave(p), 600);
+  _deriveAndSavePending = p;
+  _deriveAndSaveTimer = setTimeout(() => { _deriveAndSaveTimer = null; _deriveAndSavePending = null; deriveAndSave(p); }, 600);
+}
+function _flushPendingDeriveAndSave() {
+  if (_deriveAndSaveTimer) {
+    clearTimeout(_deriveAndSaveTimer);
+    _deriveAndSaveTimer = null;
+    const p = _deriveAndSavePending;
+    _deriveAndSavePending = null;
+    if (p) deriveAndSave(p);
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -11461,7 +11473,7 @@ if (_vpParams.get('verify')) {
   // up to 600ms of local edits sitting only in `state.projects` (not yet in localStorage) get
   // silently discarded the moment loadProjects() overwrites `state.projects` from whatever the
   // verify pop-out (or another tab) just wrote.
-  function _flushPendingSave() { if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } }
+  function _flushPendingSave() { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } }
   window.aimoRefresh = function() {
     _flushPendingSave();
     loadProjects();
@@ -12675,21 +12687,21 @@ function buildGovDetailPanel(a) {
       <div class="forum-node">
         <div class="forum-node-dot ${nodeClass('coordination')}"></div>
         <div class="forum-node-lbl ${nodeLblClass('coordination')}">Coordination<br>Meeting</div>
-        <div class="forum-node-date">${a.dateOpened||'—'}</div>
+        <div class="forum-node-date">${esc(a.dateOpened||'—')}</div>
         ${durStr(dCoord)}
       </div>
       <div class="forum-arrow"></div>
       <div class="forum-node">
         <div class="forum-node-dot ${nodeClass('working_group')}"></div>
         <div class="forum-node-lbl ${nodeLblClass('working_group')}" style="${!hasWG?'opacity:.4':''}">Aerodrome/AIMO<br>Working Group</div>
-        <div class="forum-node-date" style="${!hasWG?'opacity:.4':''}">${a.escalationDate||'—'}</div>
+        <div class="forum-node-date" style="${!hasWG?'opacity:.4':''}">${esc(a.escalationDate||'—')}</div>
         ${durStr(dWG)}
       </div>
       <div class="forum-arrow"></div>
       <div class="forum-node">
         <div class="forum-node-dot ${nodeClass('steering')}"></div>
         <div class="forum-node-lbl ${nodeLblClass('steering')}" style="${!hasSC?'opacity:.4':''}">RAC-KSIADC<br>Steering Committee</div>
-        <div class="forum-node-date" style="${!hasSC?'opacity:.4':''}">${a.steeringDate||'—'}</div>
+        <div class="forum-node-date" style="${!hasSC?'opacity:.4':''}">${esc(a.steeringDate||'—')}</div>
         ${durStr(dSC)}
       </div>
     </div>`;
@@ -12829,7 +12841,7 @@ function buildGovDetailPanel(a) {
             <div style="font-size:12px;color:${breach?'var(--red)':'var(--text-1)'};font-weight:700;">
               ${a.targetDate?fmtDate(a.targetDate):'Not set'}${breach?' (Breached)':''}
             </div>
-            ${a.status==='closed'?`<div style="font-size:10px;color:var(--green);">Closed on ${a.dateClosed||'—'}</div>`:''}
+            ${a.status==='closed'?`<div style="font-size:10px;color:var(--green);">Closed on ${esc(a.dateClosed||'—')}</div>`:''}
           </div>
         </div>
         <div class="gov-detail-label" style="margin-top:8px;">Date Change History</div>
@@ -13454,6 +13466,7 @@ function downloadSession() {
   // M2: flush any pending debounced save first — otherwise up to 600ms of edits could still
   // be sitting only in `state.projects`, not yet in localStorage, and the exported backup file
   // would be one edit behind while setBackupDirty(false) below claims it's fully caught up.
+  _flushPendingDeriveAndSave();
   if (saveTimer) { clearTimeout(saveTimer); saveProjects(); }
   const data = {
     exportedAt: new Date().toISOString(),
