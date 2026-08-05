@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | 🔧 Phases 1 & 3 (v3.1) and Phase 4 items 1–3 (v3.2) built + QA'd — awaiting explicit "ship it". Phase 2 not started; Phase 4 item 4 out of scope |
+| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
@@ -89,10 +89,29 @@ _(none yet)_
     this app has no phone support at all (no drawer nav, no full-screen modals,
     no safe-area handling).
 
-  Neither version is deployed; `public/index.html` is untouched, awaiting a
-  separate explicit "ship it" per `CLAUDE.md`. The pre-deploy review subagent
-  for Phase 3 (it touches ~10 shared render functions) has **not** been run yet
-  — that's a ship-time gate, to run against the final diff.
+  **✅ Shipped 05 Aug 2026** on the owner's explicit *"merge into
+  claude/review-pending-context-jbjnrg and ship it"* — `aimo-tracker.html`
+  copied to `public/index.html` and merged into the Cloudflare-tracked
+  production branch (this working branch was 3 commits ahead, 0 behind, so a
+  clean fast-forward).
+  - **Pre-deploy review ran first** (required — Phase 3 touches ~10 shared
+    render functions). It booted the app in Chromium, exercised every rewritten
+    builder, and injected XSS payloads across every stage tab and exec sub-tab:
+    **no XSS, no markup damage, no tour DOM/listener leaks, no CSS regressions**
+    against a base-vs-new comparison of 12 screens. Six findings; four fixed
+    before shipping:
+    1. *(medium)* the tour's blocker sat at z-index 20000+, above the sign-in
+       gate at 9500 — a session dropping mid-tour re-showed the sign-in form
+       under a live click-swallowing blocker. `_agShowState()` now tears both
+       post-reveal surfaces down whenever the gate returns.
+    2. `addObs()` stopped scrolling the new row into view on the Operations /
+       Engineering panels — those rows have no `id="obs-row-…"`, so they relied
+       on the `.sec-label` the section-card rewrite replaced with `.p8hd`.
+    3. the tour bubble used a hard-coded 170px height estimate and hung ~5px
+       below the viewport on taller steps; now re-placed with its measured
+       height.
+    4. Escape didn't close What's-new or Settings, unlike every other modal.
+  - **Two findings deliberately not actioned** — see "Open follow-ups" below.
 
   **Three open decisions — resolved by the owner, 05 Aug 2026: all three
   recommendations accepted** (keep the glass cards, switch the detail tab bar
@@ -123,11 +142,32 @@ _(none yet)_
   the very crosshairs P5 removed here. These are worth fixing in the sibling
   rather than regressing this app.
 
-  **Correction to `CLAUDE.md`:** it states the in-app feedback button "is not
+  **Correction to `CLAUDE.md`:** it stated the in-app feedback button "is not
   built yet". It *is* built and present — `.fb-fab` CSS, `openFeedbackModal()`,
-  and the `#fbFab` button (`aimo-tracker.html:13798`), shipped in P1/v1.1. The
-  CLAUDE.md wording needs updating either way; worth re-verifying the Worker
-  endpoint still resolves while we're in there.
+  and the `#fbFab` button, shipped in P1/v1.1. **Corrected in `CLAUDE.md` on
+  05 Aug 2026.** Still worth re-verifying the Worker endpoint resolves — per
+  `docs/CLOUDFLARE.md`, `NOTION_API_KEY` needs re-adding in the dashboard as
+  type **Secret** (owner-only, dashboard step).
+
+  **Open follow-ups from the pre-deploy review (not blocking, owner's call):**
+  - **`--text-3` contrast.** Ported from the sibling as `#8a8496`, up from
+    `#7b7488`. That drops small-text contrast on white from 4.47:1 to
+    **3.61:1** — below WCAG AA's 4.5:1 for normal text, and this token carries
+    the 9–11px stat-tile labels, table headers and helper copy. Kept as-is
+    because matching the sibling *is* the point of P16, but the sibling has the
+    same problem: the honest fix is darkening the token in **both** apps
+    (~`#6f6a7c` clears AA while staying in the same family).
+  - **What's-new can't auto-fire on this release.** `aimo_seen_version` is
+    introduced *by* v3.2, so every existing browser hits the "no stored
+    version" branch and baselines silently rather than being greeted with a
+    changelog. Working as designed (and as the sibling does), but it means the
+    v3.2 entry is only reachable via the version badge — the first automatic
+    pop will be v3.3.
+  - **Dead code carried over from the sibling:** `_p8Toggle`/`_p8Collapsed` and
+    `opts.collapse`/`opts.flush` have no call sites (all 22 `_p8()` calls omit
+    both), and `buildCrsHistorySection`/`buildDelayAnalyticsHTML` are gated on
+    `CRS_STAGES`, currently an empty Set, so their rewrites are unreachable.
+    Harmless; a cleanup pass could drop them.
 - **P14 — Retire local-only usage — implemented, reviewed, and QA'd**
   (05 Aug 2026, owner feedback via the in-app Feedback button, 04 Aug 2026:
   *"Change the login screen to be like this. Remove the prompt for session
