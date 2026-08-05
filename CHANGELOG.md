@@ -4,7 +4,7 @@ All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
 ## v4.2 — 06 Aug 2026
-- **Pre-deploy review fixes for P16** (three independent Opus reviewers — sync/
+- **Pre-deploy review fixes for P17** (three independent Opus reviewers — sync/
   data-loss, hierarchy/KPI, and security — run on the owner's instruction before
   deploying v4.0/v4.1). 22 findings; all fixed. Ships with v4.0 and v4.1 as one
   feature. **Still not deployed** — `public/index.html` untouched.
@@ -85,7 +85,7 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
     critical and high finding above.
 
 ## v4.1 — 06 Aug 2026
-- **New: three-level project hierarchy — P16 phase 2** (ships together with v4.0
+- **New: three-level project hierarchy — P17 phase 2** (ships together with v4.0
   below; the two are one feature split across two approvals). Mirrors the Safety
   Tracker's **program → project → sub-project** structure, so the two apps show
   the same shape. **Not deployed** — `public/index.html` untouched, awaiting an
@@ -134,7 +134,7 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
     parent-authority fix. All passing.
 
 ## v4.0 — 06 Aug 2026
-- **New: cross-tracker project registry — phase 1 of 2** (P16 here; **P36** in
+- **New: cross-tracker project registry — phase 1 of 2** (P17 here; **P36** in
   the `aimo-safety-tracker` repo — the two ship together). Owner request,
   05 Aug 2026: *"the existing projects in safety tracker should also be
   reflected in the projects tracker … when a project is created it should also
@@ -175,6 +175,99 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
   - 43 logic tests across both apps' reconcilers — first-run convergence, both
     rename directions, both delete directions, resurrection, cycle guard, viewer
     read-only, cold-start guards — all passing.
+## v3.2 — 05 Aug 2026
+- **"What's new", guided tour, and a Settings modal — P16 Phase 4, items 1–3**
+  (owner-approved: *"Proceed with 1,2 and 3"*). Three independent UX features
+  the Safety Tracker sibling has and this app didn't. Item 4 (viewer/read-only
+  mode) was explicitly **not** included — it's Supabase RLS work, not frontend.
+  Additive: nothing removed, no data-model change, nothing to re-enter.
+  - **What's new.** After an update, a modal lists the changes since the version
+    this browser last saw, once. The sidebar version badge is now clickable to
+    reopen it any time. Tracked per browser in `localStorage['aimo_seen_version']`
+    — a first-ever load baselines silently rather than greeting new users with a
+    changelog.
+    - This required a **second, in-app copy of the release notes**: a
+      `CHANGELOG` const near `APP_VERSION`, written benefit-first for end users,
+      alongside this file's engineering log. Both must be updated on release —
+      noted in the const's own comment and in `CLAUDE.md` § Versioning rules.
+  - **Guided tour.** A spotlight-and-bubble walkthrough covering search, Add
+    Project, opening a project, Governance/Schedule, feedback and the version
+    badge. Auto-runs once per browser (`localStorage['aimo_tour_seen']`),
+    replayable from a new header "Tour" button or from Settings. Steps whose
+    target isn't on screen are filtered out rather than shown broken — with no
+    projects yet, the "Open a project" step is skipped automatically.
+    - The dimming and the highlight ring are one element: `.tour-ring`'s
+      box-shadow paints the ring, then a 9999px spread dims everything else, so
+      the highlighted control is never restyled. A transparent `.tour-blocker`
+      underneath stops clicks reaching the dimmed app. Escape ends the tour.
+    - The two never stack: the tour waits behind "What's new" and starts when
+      it's dismissed. Neither can fire in the `?verify=` pop-out (it doesn't run
+      `revealApp()`, and both guard on `verify-mode`) or behind the sign-in gate.
+  - **Settings modal.** The header "Session" button is now "Settings" (carrying
+    the same unsaved-changes dot), with **Session Data** — the unchanged backup/
+    restore modal, one click further in — and **About** (version, date, and
+    shortcuts to What's new / Replay tour). Unlike the sibling there's no Risk &
+    Hazard Library or report-logo section; those are safety-specific. KPI
+    thresholds are overridable in data via `updateKPISetting()` but still have
+    no UI — Settings is where that would go if it's ever wanted.
+  - **Fixed:** the Session modal's footer used `class="modal-footer"`, which is
+    not a defined class, so it rendered unstyled. Now `modal-ftr`. Pre-existing,
+    but more visible now that Settings is the way in.
+  - QA: headless runs over a brand-new browser (silent baseline + tour
+    auto-start), an upgrade from v2.0 (correct entries listed, "Got it" hands
+    off to the tour), an already-current browser (nothing pops; badge click
+    still forces it), tour next/back/skip/Escape/walk-to-end, replay from
+    Settings, and an empty project list — no JavaScript errors.
+
+## v3.1 — 05 Aug 2026
+- **Design parity with the AIMO Safety Tracker sibling — Phases 1 & 3 of P16**
+  (owner request: *"review the design, UI and UX of the safety tracker and see
+  what changes need to be made to the Projects tracker so that they are
+  identical and very similar"*). Visual only — no data-model, storage or
+  behavioural change, and nothing to re-enter or re-import.
+  - **Phase 1 — shared visual language.** Ported the two style layers the
+    sibling gained after the 2026-07-19 split and this app never received:
+    the *iOS-polish* layer (consistent radii — buttons 11px, inputs 10px,
+    panels/table wraps 14px, stat tiles 12px, pills 9px — plus unified
+    transitions, press feedback, antialiased text and tap-highlight
+    suppression), and the *Refined Pages* layer (4px violet accent-bar section
+    headers, stat strips as gapped/elevated white tiles with hover lift, soft
+    surface elevation, gentler table rhythm). Added the sibling's brand palette
+    tokens (`--violet`, `--sp01`–`--sp04`, `--skydepth` …) that those layers
+    reference, and `height:100dvh` on `body`.
+  - Point fixes: the header logo was painting `--brand-grad` on top of the
+    gradient header bar, making it effectively invisible — now solid
+    `--accent`. Header ghost buttons realigned to the sibling's contrast
+    values. The project detail tab bar's active indicator moved from amber to
+    `--accent` purple: v1.3 took amber from screenshots of the sibling, but
+    there amber belongs to `.safety-sub-btn`, not the detail tab bar.
+  - **Phase 3 — section cards.** Added the sibling's `_p8()` section-card
+    component (white card, tinted header strip with violet accent bar,
+    optional count pill and header actions, optional collapse) and wrapped the
+    inner-page sections with it: Document Register/Documents, PSQS Document
+    Registry, Design Package Review Cycles, PRC Overview and Comment Status,
+    Risk Assessment, Risk Verification (+ History), Safety/Operations/
+    Engineering Observations, All Observations, Construction Schedule,
+    Submission Milestones, GACA Acceptance Cycle, Comments by Document, and
+    Task Schedule. (Also CRS Revision History and Delay Analytics, though both
+    are gated on `CRS_STAGES`, currently empty, so neither renders today. KPI
+    detail panes are *not* wrapped — they render via `tableWrap`.)
+  - Redundant `border-top` separators between those sections were removed —
+    each section is now a self-contained card — and the Document Register card
+    is skipped entirely when its summary strip is empty (previously it would
+    have rendered as an empty card when embedded in another tab).
+  - **Deliberately kept, against the sibling:** the frosted-glass project cards
+    (owner request, v1.4) and the coloured top borders on the sidebar stat
+    tiles (v1.3) — the latter now combined with the new 12px tile radius. The
+    corner "crosshair" brackets removed in v1.4 were **not** re-added even
+    though the sibling still has them.
+  - **Not copied from the sibling:** its `border-radius:0` re-skin leftovers,
+    where a class-based polish layer missed `.toast-item`, `.close-btn`,
+    `.ms-date-inp`, `.task-inp`, scrollbar thumbs and `.form-map-wrap`. This
+    app's rounded values are kept.
+  - QA: headless run over the homepage, all 8 detail tabs, every Construction
+    sub-panel, the AIPS sub-tab, Governance and Schedule, with both empty and
+    populated projects — no JavaScript errors.
 
 ## v3.0 — 05 Aug 2026
 - **New: mandatory sign-in gate — local-only usage is retired** (owner

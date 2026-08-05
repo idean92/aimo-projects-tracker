@@ -6,7 +6,8 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P16 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | 🔧 **Built, QA'd, independently reviewed** (v4.0 registry/sync, v4.1 hierarchy, v4.2 review fixes). 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — **all fixed**, 92 logic tests passing. Awaiting an explicit "ship it" |
+| P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | 🔧 **Built, QA'd, independently reviewed** (v4.0 registry/sync, v4.1 hierarchy, v4.2 review fixes). 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — **all fixed**, 92 logic tests passing. Awaiting an explicit "ship it" |
+| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
@@ -31,7 +32,7 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
-- **P16 — Cross-tracker project overlap: shared registry + hierarchy mirror**
+- **P17 — Cross-tracker project overlap: shared registry + hierarchy mirror**
   (05 Aug 2026, owner request in conversation: *"i need to discuss with you on
   how projects can overlap across both trackers (e.g. the existing projects in
   safety tracker should also be reflected in the projects tracker) … safety
@@ -126,6 +127,143 @@ _(none yet)_
   back over newer ones. Proposed as a phased build — registry + sync first,
   hierarchy second — not one drop. Paired item: **P36** in the Safety Tracker
   repo.
+- **P16 — Design/UI/UX parity with the Safety Tracker sibling** (05 Aug 2026,
+  owner request: *"review the design, UI and UX of the safety tracker and see
+  what changes need to be made to the Projects tracker so that they are
+  identical and very similar"*). **Consolidated only — nothing implemented.**
+
+  **Root cause of the drift.** Both apps still share the same base stylesheet —
+  class names, structure and section order are near-identical, and every
+  component class the Safety Tracker restyles already exists here. The gap is
+  four layers Safety appended after the 2026-07-19 split that this app never
+  received:
+  1. A "daa International 2025 brand re-skin" flattening everything to
+     `border-radius:0`;
+  2. an **iOS-polish layer** appended later that re-rounds and re-shadows almost
+     all of it — this, not the sharp look, is Safety's *current* language;
+  3. **Refined Pages (V3.4)** + **P8 section cards (V4.0)** — accent-bar section
+     headers, gapped elevated stat tiles, white section cards;
+  4. a **Mobile Responsive Layer** (drawer nav, phone modals, safe-area insets).
+
+  Because the layers' selectors override the base regardless of its value, this
+  app's 8px-rounded base does **not** need unwinding first — porting is largely
+  a CSS append.
+
+  **Phased approach** (full review in the agent's parity report; Phases 1 and 3
+  are planned in detail and awaiting approval):
+  - **Phase 1 — visual parity.** CSS-only. Brand palette tokens, `--text-3`,
+    `100dvh`, the iOS-polish and Refined-Pages layers, plus point fixes (header
+    logo, header ghost buttons, detail-tab active colour). Low risk, no markup
+    or logic touched.
+  - **Phase 2 — mobile layer.** The single largest UX gap: this app has four
+    breakpoints that only narrow the sidebar, and no phone support at all.
+    Safety adds a hamburger + off-canvas drawer, horizontally-scrolling nav
+    bars, icon-only header, full-screen modals, 40–44px tap targets, and
+    `env(safe-area-inset-*)` notch handling. All additive inside media queries.
+    Not yet planned in detail.
+  - **Phase 3 — P8 section cards.** Port `.p8card`/`.p8hd`/`.p8bd` CSS plus the
+    `_p8()`/`_p8Toggle()` helpers, then wrap this app's inner-page sections
+    (24 `.sec-label` sections across 8 build functions, 22 `.info-panel-title`
+    panels, 1 `.sched-section-hdr`). Touches shared render paths.
+  - **Phase 4 — UX features.** What's-new modal (needs an in-app `CHANGELOG`
+    array — this app has none), guided tour, Settings-modal consolidation of the
+    Session button, viewer/read-only mode. Each its own decision.
+
+  **Status (05 Aug 2026):**
+  - **Phases 1 & 3 — implemented and QA'd, versioned v3.1** (see `CHANGELOG.md`).
+  - **Phase 4 items 1–3 — implemented and QA'd, versioned v3.2** on the owner's
+    *"Proceed with 1,2 and 3"*: the "What's new" modal, the guided tour, and the
+    Settings modal (header "Session" → "Settings", session backup/restore moved
+    inside). Item 4 (viewer/read-only mode) explicitly **out of scope** — it's
+    Supabase RLS work on the `projects` schema, not frontend, and needs its own
+    decision about what a viewer is for this app.
+    - Note: "What's new" introduced a **second, in-app copy of the release
+      notes** (`const CHANGELOG` in `aimo-tracker.html`). Both it and
+      `CHANGELOG.md` must be updated on every release — added to `CLAUDE.md`
+      § Versioning rules.
+  - **Phase 2 (mobile layer) not started** — still the largest remaining UX gap:
+    this app has no phone support at all (no drawer nav, no full-screen modals,
+    no safe-area handling).
+
+  **✅ Shipped 05 Aug 2026** on the owner's explicit *"merge into
+  claude/review-pending-context-jbjnrg and ship it"* — `aimo-tracker.html`
+  copied to `public/index.html` and merged into the Cloudflare-tracked
+  production branch (this working branch was 3 commits ahead, 0 behind, so a
+  clean fast-forward).
+  - **Pre-deploy review ran first** (required — Phase 3 touches ~10 shared
+    render functions). It booted the app in Chromium, exercised every rewritten
+    builder, and injected XSS payloads across every stage tab and exec sub-tab:
+    **no XSS, no markup damage, no tour DOM/listener leaks, no CSS regressions**
+    against a base-vs-new comparison of 12 screens. Six findings; four fixed
+    before shipping:
+    1. *(medium)* the tour's blocker sat at z-index 20000+, above the sign-in
+       gate at 9500 — a session dropping mid-tour re-showed the sign-in form
+       under a live click-swallowing blocker. `_agShowState()` now tears both
+       post-reveal surfaces down whenever the gate returns.
+    2. `addObs()` stopped scrolling the new row into view on the Operations /
+       Engineering panels — those rows have no `id="obs-row-…"`, so they relied
+       on the `.sec-label` the section-card rewrite replaced with `.p8hd`.
+    3. the tour bubble used a hard-coded 170px height estimate and hung ~5px
+       below the viewport on taller steps; now re-placed with its measured
+       height.
+    4. Escape didn't close What's-new or Settings, unlike every other modal.
+  - **Two findings deliberately not actioned** — see "Open follow-ups" below.
+
+  **Three open decisions — resolved by the owner, 05 Aug 2026: all three
+  recommendations accepted** (keep the glass cards, switch the detail tab bar
+  to accent purple, keep the coloured stat-tile borders *and* add the radius):
+  - **Glass project cards.** P5 (v1.4) removed the crosshair corner brackets and
+    added the frosted-glass card on direct owner feedback ("iPhone glass" look).
+    Safety uses solid + border + soft shadow instead. *Recommendation: keep the
+    glass* — it's a deliberate owner preference and nothing else in the parity
+    work depends on it.
+  - **Amber active detail-tab.** P3 (v1.3) added the amber/orange active-nav
+    indicator, built from owner screenshots of the live Safety Tracker. But
+    Safety's `.tab-btn.active` is `var(--accent)` purple; amber (`#e07b00`)
+    survives there only on `.safety-sub-btn` — so P3 most likely mirrored the
+    sub-bar onto the wrong bar. *Recommendation: switch to accent purple.*
+  - **Coloured top borders on sidebar stat tiles.** P3 added them deliberately;
+    Safety has since dropped them in favour of rounded elevated tiles.
+    *Recommendation: keep the coloured border AND add the 12px radius* — they
+    compose fine.
+
+  **Do not copy from Safety** (this app is currently the better of the two —
+  Safety's iOS layer is class-based and missed these, leaving re-skin
+  leftovers): `.toast-item`, `.close-btn`, `.ms-date-inp`, `.task-inp`,
+  `::-webkit-scrollbar-thumb` and `.form-map-wrap` are all `border-radius:0` in
+  Safety and sensibly rounded here. Safety's `.card-visual` also has no top
+  radius, so its map renders square corners inside an 18px rounded card — a real
+  visual bug there, already fixed here in P2. Safety also still emits four
+  `<i class="corner">` bracket decorations on a now-rounded, shadowed card —
+  the very crosshairs P5 removed here. These are worth fixing in the sibling
+  rather than regressing this app.
+
+  **Correction to `CLAUDE.md`:** it stated the in-app feedback button "is not
+  built yet". It *is* built and present — `.fb-fab` CSS, `openFeedbackModal()`,
+  and the `#fbFab` button, shipped in P1/v1.1. **Corrected in `CLAUDE.md` on
+  05 Aug 2026.** Still worth re-verifying the Worker endpoint resolves — per
+  `docs/CLOUDFLARE.md`, `NOTION_API_KEY` needs re-adding in the dashboard as
+  type **Secret** (owner-only, dashboard step).
+
+  **Open follow-ups from the pre-deploy review (not blocking, owner's call):**
+  - **`--text-3` contrast.** Ported from the sibling as `#8a8496`, up from
+    `#7b7488`. That drops small-text contrast on white from 4.47:1 to
+    **3.61:1** — below WCAG AA's 4.5:1 for normal text, and this token carries
+    the 9–11px stat-tile labels, table headers and helper copy. Kept as-is
+    because matching the sibling *is* the point of P16, but the sibling has the
+    same problem: the honest fix is darkening the token in **both** apps
+    (~`#6f6a7c` clears AA while staying in the same family).
+  - **What's-new can't auto-fire on this release.** `aimo_seen_version` is
+    introduced *by* v3.2, so every existing browser hits the "no stored
+    version" branch and baselines silently rather than being greeted with a
+    changelog. Working as designed (and as the sibling does), but it means the
+    v3.2 entry is only reachable via the version badge — the first automatic
+    pop will be v3.3.
+  - **Dead code carried over from the sibling:** `_p8Toggle`/`_p8Collapsed` and
+    `opts.collapse`/`opts.flush` have no call sites (all 22 `_p8()` calls omit
+    both), and `buildCrsHistorySection`/`buildDelayAnalyticsHTML` are gated on
+    `CRS_STAGES`, currently an empty Set, so their rewrites are unreachable.
+    Harmless; a cleanup pass could drop them.
 - **P14 — Retire local-only usage — implemented, reviewed, and QA'd**
   (05 Aug 2026, owner feedback via the in-app Feedback button, 04 Aug 2026:
   *"Change the login screen to be like this. Remove the prompt for session
