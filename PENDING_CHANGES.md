@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Implemented + QA'd, pending review sign-off, version bump, commit |
+| P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🆕 Scope confirmed by owner — not started |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
 | P12 | Audit batch 4 — schema + governance (H3, M8, M9) | ✅ Done (H3 shipped in v2.0; M8/M9 done in Batch D) |
@@ -63,71 +63,36 @@ _(none yet)_
   left over from verifying the feedback endpoint (no Notion delete/archive
   tool is available, so this is the closest equivalent). Batch B (P10) and
   Batch D (P9/P11/P12 remainders + P13) — see the consolidated entry below.
-- **P9/P11/P12/P10/P13 — all remaining audit items implemented and QA'd**
-  (05 Aug 2026, Batch A/B/D, on the owner's explicit "go ahead"). C1, C2, H1,
-  H2, H3, H4 shipped earlier with v2.0 (see `CHANGELOG.md`); everything below
-  is newly done in this pass, built on `aimo-tracker.html` and verified with
-  headless Playwright (targeted tests per fix plus a full regression re-run of
-  the existing cloud-sync suite — zero regressions). **Not yet versioned,
-  reviewed, committed, or deployed** — see P15 above.
-  - **P9 remainder — M2**: `downloadSession()` now flushes any pending
-    debounced save before exporting, so the export can no longer miss the
-    last edit.
-  - **P11 remainder — M5, M6, M7, L6, L7, L9, L10**: `workingDaysKSA()`
-    rewritten for correct UTC date handling (was timezone-fragile) and
-    returns `null` on reversed dates instead of a bogus negative count; KPI8
-    (comment close rate) now sums from the same `stageDocs[key].docList`
-    source the document-review views use, instead of a separately-derived
-    `reviewEvents` count that could disagree with it; KPI target-display text
-    now reads the settings-aware `getKPIS()` accessor instead of hardcoded
-    `KPI_DEFAULTS`; KPI detail-view RAG colors centralized through one
-    `ragHex()` helper; KPI5 (end-to-end days) excludes partial submissions
-    consistently at both its calc and detail-render sites;
-    `deriveMilestoneDates()` now sorts the design log before taking its first
-    entry instead of assuming input order. **Touches KPI scoring** — an
-    independent review subagent (stronger model) is running against this
-    batch before it's committed, per `CLAUDE.md`'s rule; results pending.
-  - **P12 remainder — M8, M9**: the Project Overview panel's governance-breach
-    check now calls the same canonical `isDateBreached()` function the
-    Governance view uses (was a separately-inlined, narrower check); editing
-    an action's target date via the Edit Action modal now records a
-    `targetDateHistory` entry, same as every other target-date-changing path.
-  - **P10 — quick correctness wins (L1, M3, L8, M10, M11)**: escaped 3
-    previously-unescaped governance-panel fields closing a stored-XSS gap
-    reachable via a hand-edited session import; governance action age no
-    longer renders "NaNd" when Date Opened is empty (falls back to an
-    ID-embedded timestamp); fixed an invalid CSS class name that was silently
-    dropping a KPI sub-line's RAG color; the sidebar version badge is now
-    driven by `APP_VERSION` at runtime instead of a hardcoded literal that
-    could drift; `CLAUDE.md`/`docs/ARCHITECTURE.md` no longer hardcode the
-    current version number, pointing at the `APP_VERSION` constant instead.
-  - **P13 — hardening & hygiene (M1, M4, L2–L5, L11, L13)**: a new
-    `_flushPendingSave()` helper now runs before every cross-tab/cross-window
-    state reload (the `verify_updated` broadcast, the `storage` listener, the
-    `_aimo_sync` poll, and `window.aimoRefresh`), closing the race where an
-    incoming external update could silently clobber a local unsaved edit —
-    same problem P7's `sbNoteExternalStorageChange` solved for cloud sync,
-    now closed for the plain-localStorage path too; two handlers that wrote
-    the full projects array (incl. base64 photos) to localStorage on every
-    keystroke now debounce instead; ID generation (12 call sites) now appends
-    a random suffix to the timestamp to prevent collisions; a failed
-    localStorage write (quota exceeded) now shows a persistent visible
-    indicator (`#sessionDirtyDot`) in addition to the existing one-time
-    alert, and clears itself on the next successful write; `/api/feedback`
-    now rejects wrong-content-type and oversized requests before parsing the
-    body, instead of after; deleted ~506 lines of dead `buildSafety*` code
-    (and 4 orphaned helpers) left over from the v1.4 Safety-tab redirect —
-    confirmed via grep that nothing else references them.
-    - **M12 explicitly excluded** — production deploying from this working
-      branch instead of `main` is a separate infra decision needing its own
-      owner approval, tracked here and in `CLAUDE.md`'s deployment notes.
-    - **Follow-up spotted, not yet actioned**: while confirming the deleted
-      `buildSafety*` functions had no other callers, the MOC CRUD functions
-      (`addMoc`, `saveMocField`, `saveMocStatus`, etc.) and their state vars
-      (`stSafetyMocId`, `mocSectionCollapsed`) also appear to have zero live
-      UI callers left, post the v1.4 Safety-tab redirect. Left in place —
-      out of L13's specific scope — flagging here for a future cleanup pass
-      if confirmed dead.
+- **P9/P11/P12/P10/P13 — all remaining audit items implemented, reviewed, and
+  QA'd** (05 Aug 2026, Batch A/B/D, on the owner's explicit "go ahead"). C1,
+  C2, H1, H2, H3, H4 shipped earlier with v2.0. **See `CHANGELOG.md` v2.1 for
+  the full per-item description** — KPI correctness (M5, M6, M7, L6, L7, L9,
+  L10), governance data integrity (M8, M9), data-loss hardening (M1, M2, M4),
+  a stored-XSS fix (L1), assorted correctness/hygiene items (M3, L8, M10,
+  M11, L4, L5, L11, L13), and Worker request-validation hardening (L2/L3).
+  Versioned as v2.1. **Not yet deployed** — `public/index.html` untouched,
+  awaiting a separate explicit "ship it" per `CLAUDE.md`.
+  - **Independent review** (required — this batch touches KPI scoring,
+    session export, and cross-tab save races) found 5 real regressions
+    before this shipped as v2.1, two of them data-loss bugs in the fixes
+    meant to prevent data loss: `saveTimer` never reset after firing (so
+    every flush site re-saved stale state over a just-loaded external
+    update — silently destroying the verify pop-out's edits); the L10 sort
+    didn't filter undated rounds (blanking a real milestone date); the new
+    derive-and-save debounce wasn't flushed before export; the quota-
+    recovery fix cleared the dirty dot's only background source instead of
+    restoring it; the XSS fix missed 4 more raw interpolations in the same
+    panel. All 5 fixed and re-verified — see `CHANGELOG.md` v2.1.
+  - **M12 explicitly excluded** — production deploying from this working
+    branch instead of `main` is a separate infra decision needing its own
+    owner approval, tracked here and in `CLAUDE.md`'s deployment notes.
+  - **Follow-up spotted, not yet actioned**: while confirming the deleted
+    `buildSafety*` functions had no other callers, the MOC CRUD functions
+    (`addMoc`, `saveMocField`, `saveMocStatus`, etc.) and their state vars
+    (`stSafetyMocId`, `mocSectionCollapsed`) also appear to have zero live UI
+    callers left, post the v1.4 Safety-tab redirect. Left in place — out of
+    L13's specific scope — flagging here for a future cleanup pass if
+    confirmed dead.
 
 ## ✅ Shipped
 - **P7 — Cloud sync (Supabase)** (v2.0, 04 Aug 2026), the "big build" requested

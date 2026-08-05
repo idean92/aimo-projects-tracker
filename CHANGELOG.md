@@ -3,6 +3,76 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v2.1 — 05 Aug 2026
+- **Fixed: all remaining Medium/Low findings from the code audit** (Notion:
+  "Code Audits — AIMO Projects Tracker"; see `PENDING_CHANGES.md` P9–P13 for
+  the full audit context — the Critical/High findings shipped earlier in
+  v2.0). Built on the owner's explicit "go ahead" for this whole remaining
+  set (Batches B and D below); M12 (production deploying from this working
+  branch instead of `main`) is intentionally excluded — separate infra
+  decision, needs its own approval.
+  - **KPI correctness** (M5, M6, M7, L6, L7, L9, L10): `workingDaysKSA()`
+    rewritten for correct UTC date handling — was timezone-fragile and could
+    misfire around midnight; now returns `null` on reversed dates instead of
+    a bogus negative count. KPI8 (comment close rate) now sums from the same
+    `stageDocs[key].docList` source the document-review views use, instead
+    of a separately-derived count that could disagree with it. KPI
+    target-display text now reads the settings-aware `getKPIS()` accessor
+    instead of hardcoded defaults. KPI detail-view RAG colors centralized
+    through one `ragHex()` helper. KPI5 (end-to-end days) now consistently
+    excludes partial submissions at both its calculation and its
+    detail-render call sites. `deriveMilestoneDates()` now sorts the design
+    submission log by actual date (filtering out undated rounds first)
+    before taking its first entry, instead of assuming array order.
+  - **Governance data integrity** (M8, M9): the Project Overview panel's
+    breach check now calls the same `isDateBreached()` function the
+    Governance view uses, instead of a narrower inline check that could
+    disagree with it. Editing an action's target date via the Edit Action
+    modal now records a `targetDateHistory` entry, same as every other
+    target-date-changing path.
+  - **Data-loss hardening** (M1, M2, M4): a new `_flushPendingSave()` /
+    `_flushPendingDeriveAndSave()` pair now runs before every cross-tab/
+    cross-window state reload (the `verify_updated` broadcast, the `storage`
+    listener, the `_aimo_sync` poll, and `window.aimoRefresh`) and before a
+    session export, closing a race where an incoming external update or an
+    export could silently miss or clobber a locally pending debounced edit —
+    the same problem P7's `sbNoteExternalStorageChange` already solved for
+    cloud sync, now closed for the plain-localStorage and derived-field save
+    paths too. Two handlers that wrote the full projects array (incl. base64
+    photos) to localStorage on every keystroke now debounce instead.
+  - **Security** (L1): closed a stored-XSS gap in the governance action
+    detail panel — a hand-edited/malicious session import could previously
+    plant an unescaped payload in several date/reference fields rendered via
+    `innerHTML` (date-opened, escalation/steering dates, date-closed,
+    meeting reference); all now escaped.
+  - **Correctness/hygiene** (M3, L8, M10, M11, L4, L5, L11, L13): governance
+    action age no longer renders "NaNd" when Date Opened is empty (falls
+    back to an ID-embedded timestamp); fixed invalid CSS silently dropping a
+    KPI sub-line's RAG color; the sidebar version badge and the version
+    references in `CLAUDE.md`/`docs/ARCHITECTURE.md` are no longer hardcoded
+    literals that can drift from the real value; ID generation (12 call
+    sites) now appends a random suffix to prevent timestamp collisions; a
+    failed localStorage write (quota exceeded) now shows a persistent
+    visible indicator in addition to the existing one-time alert; removed
+    ~506 lines of dead `buildSafety*` code (and 4 orphaned helpers) left
+    over from the v1.4 Safety-tab redirect.
+  - **Worker hardening** (L2/L3): `/api/feedback` now rejects wrong-content-
+    type and oversized requests before parsing the body, instead of after.
+  - **Reviewed by an independent subagent before finalizing** (per
+    `CLAUDE.md`'s rule — this batch touches KPI scoring, session export, and
+    cross-tab save races). The review found 5 real regressions, two of them
+    data-loss bugs in the fixes meant to prevent data loss (a `saveTimer`
+    that never reset, silently causing stale state to overwrite a
+    just-loaded external update; an unfiltered sort that could blank a real
+    milestone date). All 5 fixed and re-verified.
+  - QA: headless Playwright — a syntax check of all inline script blocks, a
+    dedicated test per audit fix, a dedicated test per review-found
+    regression, and a full re-run of the existing Batch D and cloud-sync
+    regression suites. Zero regressions.
+- **Not shipped in this entry** — built and QA'd on the working copy only;
+  per `CLAUDE.md`, deploying to `public/index.html` requires a separate,
+  explicit "ship it."
+
 ## v2.0 — 04 Aug 2026
 - **New: cloud sync via Supabase**, matching the Safety Tracker sibling's UX
   pattern. Major/architectural change — first time this app talks to a backend
