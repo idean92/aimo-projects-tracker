@@ -1048,6 +1048,10 @@ body{font-family:'Barlow',system-ui,-apple-system,sans-serif;background:var(--bg
 .sb-empty{padding:32px 16px;text-align:center;color:var(--text-3);font-size:12px;}
 .sb-group-hdr{padding:8px 12px 3px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);margin-top:6px;}
 .sb-project-child{padding-left:22px!important;border-left:2px solid var(--border-faint);margin-left:6px;}
+/* P17 phase 2 — third level: a sub-project (addendum) nested under its parent project. */
+.sb-project-sub{padding-left:30px!important;border-left:2px solid var(--border-faint);margin-left:18px;}
+.sb-sub-tag{font-size:9px;font-weight:700;color:var(--text-3);letter-spacing:.4px;margin-right:4px;}
+.hp-sub-note{font-size:10px;color:var(--text-3);margin-top:-2px;margin-bottom:4px;}
 .ms-var-badge{display:inline-block;margin-left:4px;padding:1px 5px;border-radius:999px;font-size:9px;font-weight:700;vertical-align:middle;}
 .var-red{background:#fde8e8;color:#c0392b;}.var-amber{background:#fff3cd;color:#8a5c00;}.var-green{background:#e8f8f1;color:#1a7a4a;}
 .h-ms-baseline{font-size:9px;color:var(--text-3);margin-top:2px;line-height:1.4;}
@@ -2123,6 +2127,11 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
           </select>
           <input type="text" id="f-group-new" class="hidden" placeholder="New group name…" style="margin-top:6px;width:100%;">
         </div>
+        <div class="fgrp"><label>Parent Project <span style="font-weight:400;color:var(--text-3);">— makes this a sub-project</span></label>
+          <select id="f-parent-project">
+            <option value="">— None (top-level project) —</option>
+          </select>
+        </div>
         <div class="fgrp"><label>GACA Reference No.</label><input type="text" id="f-gaca-ref" placeholder="e.g., GACA-2025-0042"></div>
         <div class="fgrp"><label>Contractor / Package</label><input type="text" id="f-contractor" placeholder="Company or contract ref"></div>
         <div class="fgrp"><label>KSIADC Package Ref.</label><input type="text" id="f-pkg-ref" placeholder="e.g., PKG-INFRA-007"></div>
@@ -2446,6 +2455,13 @@ const DEFAULT_DOC  = () => ({ enabled:false, completionPct:0, commentsRaised:0, 
 const STORAGE_KEY  = 'aimo_projects';
 const GOVERNANCE_KEY = 'aimo_governance';
 const KPI_SETTINGS_KEY = 'aimo_kpi_settings';
+// Deletion tombstones — {projectId: deletedAtISO}. Written ONLY by deleteProject(), and the
+// sole "this was deleted" signal the registry sync acts on. Added by the pre-deploy review:
+// inferring deletion from a project's absence was unsound (the local array is replaced
+// wholesale by a pull or a session import), and an inferred deletion propagates to the
+// Safety Tracker as an irreversible tombstone. Synced, so a delete on one device reaches
+// the others rather than being resurrected by them.
+const DELETED_KEY  = 'aimo_deleted_projects';
 const KPI_DEFAULTS = {
   1: { goodT:80,   warnT:70,  invert:false, unit:'/100',    label:'PSQS score (out of 100)' },
   2: { goodT:90,   warnT:70,  invert:false, unit:'%',       label:'First submission completeness' },
@@ -2457,8 +2473,8 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v3.3';
-const APP_DATE     = '05 Aug 2026';
+const APP_VERSION  = 'v4.2';
+const APP_DATE     = '06 Aug 2026';
 
 // ── What's-new changelog (P16) ──────────────────────────────────────────────
 // Plain-language highlights shown once after each update (see showWhatsNew()).
@@ -2467,6 +2483,10 @@ const APP_DATE     = '05 Aug 2026';
 // To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
 // the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
 const CHANGELOG = [
+  { v:'v4.2', date:'06 Aug 2026', items:[
+    {icon:'🔗', title:'Projects are now shared with the Safety Tracker.', text:'Your project list is shared with the AIMO Safety Tracker. Create a project in either app and it appears in the other, and renames and deletions follow across. Only the project list is shared — your documents, KPIs, schedule and observations stay in this app.'},
+    {icon:'🗂️', title:'Sub-projects.', text:'Programs, projects and sub-projects (addendums) now nest the same way they do in the Safety Tracker. A sub-project still scores on its own in the KPIs, but folds into its parent in the Portfolio Schedule and the executive report.'},
+  ]},
   { v:'v3.3', date:'05 Aug 2026', items:[
     {icon:'👓', title:'Easier-to-read small text.', text:'Stat labels, table headers and helper text were too faint against the light purple background. They are darker now and meet the WCAG AA readability standard everywhere, including on the highlighted project row in the sidebar. The Safety Tracker got the same fix.'},
   ]},
@@ -2595,6 +2615,9 @@ function migrateProject(p) {
   }
   // Ensure parentGroup exists
   if (p.parentGroup === undefined) p.parentGroup = null;
+  // P17 phase 2: sub-project link. Null for every pre-existing project, so an older
+  // session upgrades cleanly with no data wipe.
+  if (p.parentProjectId === undefined) p.parentProjectId = null;
   // Ensure aipsDates exists
   if (!p.aipsDates) p.aipsDates = { aipsSubmission:{planned:null,baseline:null,actual:null}, infoCutoff:{planned:null,baseline:null,actual:null}, publication:{planned:null,baseline:null,actual:null}, airacEffective:{planned:null,baseline:null,actual:null} };
   else { Object.values(p.aipsDates).forEach(d=>{ if(d.actual===undefined) d.actual=null; }); }
@@ -2715,7 +2738,7 @@ let _storageWarned = false;
 function lsSet(key, value) {
   try {
     localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-    if (!_sbApplyingRemote && (key === STORAGE_KEY || key === GOVERNANCE_KEY || key === KPI_SETTINGS_KEY)) {
+    if (!_sbApplyingRemote && (key === STORAGE_KEY || key === GOVERNANCE_KEY || key === KPI_SETTINGS_KEY || key === DELETED_KEY)) {
       sbSchedulePush();
     }
     // L5: a write succeeding again after an earlier failure means there's room again — clear
@@ -2877,6 +2900,10 @@ function sbResetSessionState() {
   sbPulled = false;
   sbDirty = false;
   sbNeedsRetryPush = false;
+  // P16: a shadow left by the previous account/session would make the next reconcile
+  // mis-read "changed remotely" as "changed locally" and publish the wrong side.
+  try { localStorage.removeItem(REG_SHADOW_KEY); } catch (e) {}
+  _regLastRun = 0;
   _sbLastSyncedSnapshot = null; // stale from the previous session — harmless today (the next sign-in's pull always has sbLastPulledAt===null so it always applies and rewrites this), but keep the "resets everything" contract honest
   // Bump the session generation so a push/pull already in flight from before this reset (its
   // network request can't be cancelled) recognizes on completion that it no longer belongs to
@@ -2941,6 +2968,7 @@ function sbBuildPayload() {
     projects: lsGet(STORAGE_KEY, []),
     governance: lsGet(GOVERNANCE_KEY, { actions: [], persons: [] }),
     kpiSettings: lsGet(KPI_SETTINGS_KEY, {}),
+    deletedProjects: lsGet(DELETED_KEY, {}),   // review fix: deletions must reach other devices
   };
 }
 
@@ -2980,6 +3008,7 @@ async function sbPushNow() {
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      regReconcileSoon();   // P16: publish roster edits (create/rename/delete) outward
     } else {
       // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
       const { data, error } = await sbTable()
@@ -3008,6 +3037,7 @@ async function sbPushNow() {
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
       setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      regReconcileSoon();   // P16: publish roster edits (create/rename/delete) outward
     }
   } catch (err) {
     if (sbSessionGen === mySessionGen) setSyncStatus('error', 'Sync error — your local save is safe, but it hasn\'t reached the cloud yet.');
@@ -3064,6 +3094,13 @@ async function sbPullNow(force) {
           if (d.projects) lsSet(STORAGE_KEY, d.projects);
           if (d.governance) lsSet(GOVERNANCE_KEY, d.governance);
           if (d.kpiSettings) lsSet(KPI_SETTINGS_KEY, d.kpiSettings);
+          // Union-merge tombstones rather than taking remote wholesale, so a delete made on
+          // this device isn't dropped by a pull that raced it. Absent on pre-v4.2 blobs.
+          if (d.deletedProjects && typeof d.deletedProjects === 'object') {
+            const _t = lsGet(DELETED_KEY, {}) || {};
+            Object.keys(d.deletedProjects).forEach(k => { if (!_t[k] || d.deletedProjects[k] > _t[k]) _t[k] = d.deletedProjects[k]; });
+            lsSet(DELETED_KEY, _t);
+          }
         } finally {
           _sbApplyingRemote = false;
         }
@@ -3089,6 +3126,7 @@ async function sbPullNow(force) {
       setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
     }
     if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight (or survived a skip-apply above) — flush it now that we have a baseline
+    regReconcileSoon(true);        // P16: pick up roster changes made in the Safety Tracker
     return true;
   } catch (err) {
     if (sbSessionGen === mySessionGen) {
@@ -3099,6 +3137,189 @@ async function sbPullNow(force) {
     // untouched since sbLastPulledAt is still a valid CAS token.
     return false;
   }
+}
+
+/* ══════════════════════════════════════════════════
+   PROJECT REGISTRY — cross-tracker roster sync (P17, phase 1)
+══════════════════════════════════════════════════
+   Mirrors ONLY the project ROSTER — id, name, program, parent, archived — through
+   public.project_registry, so a project created in either tracker turns up in the other.
+   Syncs none of the payload: stageDocs, milestones, KPIs, doc registers and observations
+   all stay app-owned. Ops/engineering observations live here, safety observations stay in
+   the Safety Tracker (owner decision, P16).
+
+   The Safety Tracker is master of the hierarchy — it derives `program` and `parent_id`
+   from its MOC data and publishes them. This app consumes both, so it never needs to know
+   what a MOC is. `parentProjectId` is stored on the project record but not yet rendered:
+   the three-level program -> project -> sub-project nesting is phase 2.
+
+   Registry failures are non-fatal by design and never touch projects.team_state — the
+   registry is a convenience mirror, team_state is the system of record. */
+const REG_TABLE  = 'project_registry';
+// Local-only, deliberately NOT synced: records what THIS browser last saw in the registry,
+// which is what lets the three-way merge tell "renamed remotely" from "renamed locally".
+const REG_SHADOW_KEY = 'aimo_registry_shadow';
+let _regRunning = false, _regLastRun = 0, _regPendingRetry = null;
+const REG_THROTTLE_MS = 2000;
+
+// Review fix (CRITICAL): a registry row's `id` becomes a local project id, and project ids
+// are interpolated into onclick/id/<option> attributes all over this file. `id` is remote,
+// cross-app, attacker-controllable input, so anything not matching the shape this app
+// generates ('p_<ts>_<rand>') is rejected outright rather than escaped-and-hoped. The same
+// constraint is enforced server-side (migration project_registry_harden_id_and_audit).
+const REG_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+function regValidId(id) { return typeof id === 'string' && REG_ID_RE.test(id); }
+
+function _regNorm(r) { return { name: r.name, program: r.program || null, parentId: r.parent_id || null }; }
+function _regSame(a, b) { return !!a && !!b && a.name === b.name && a.program === b.program && a.parentId === b.parentId; }
+
+async function regReconcile(force) {
+  if (!sbClient || !sbUser) return false;
+  // Never reconcile before the first successful pull — local data may still be empty or
+  // stale, and publishing that would overwrite the registry with a cold-start snapshot.
+  if (!sbPulled) return false;
+  if (_regRunning) return false;
+  if (!force && Date.now() - _regLastRun < REG_THROTTLE_MS) {
+    // Review fix: a throttled run used to be dropped outright, so a rename made just after
+    // another one could stay unpublished until some unrelated pull happened to fire. Queue
+    // the remainder of the window instead.
+    if (!_regPendingRetry) {
+      _regPendingRetry = setTimeout(() => { _regPendingRetry = null; regReconcileSoon(true); },
+                                     Math.max(0, REG_THROTTLE_MS - (Date.now() - _regLastRun)) + 50);
+    }
+    return false;
+  }
+  _regRunning = true;
+  try {
+    // Review fix (HIGH): this is a read-modify-write of localStorage, so a debounced save
+    // still in flight would be read pre-edit and then written back over — destroying a
+    // stageDocs edit. Every other reload path in this file flushes first; so does this one now.
+    try { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } } catch (e) {}
+
+    const { data: rows, error } = await sbClient.from(REG_TABLE)
+      .select('id,name,program,parent_id,archived,origin_app');
+    if (error) { console.warn('[registry] pull failed', error); _regLastRun = Date.now(); return false; }
+
+    const projects = lsGet(STORAGE_KEY, []);
+    if (!Array.isArray(projects)) return false;
+    const shadow = lsGet(REG_SHADOW_KEY, {}) || {};
+    const tomb   = lsGet(DELETED_KEY, {}) || {};
+    const byId   = new Map(projects.map(p => [p.id, p]));
+    // Drop malformed ids before they can reach local state or the DOM.
+    const safeRows = (rows || []).filter(r => {
+      if (regValidId(r && r.id)) return true;
+      console.warn('[registry] rejected row with invalid id', r && r.id);
+      return false;
+    });
+    const remote = new Map(safeRows.map(r => [r.id, r]));
+    const upserts = [], nextShadow = {};
+    let localChanged = false;
+    const nowISO = new Date().toISOString();
+
+    const queue = (id, v, archived, originApp) => upserts.push({
+      id, name: v.name, program: v.program, parent_id: v.parentId,
+      archived: !!archived, origin_app: originApp || 'projects',
+    });
+
+    // ── local <-> registry, merged PER FIELD ──
+    // Review fix (HIGH): the previous version compared and stored whole records, so adopting
+    // a remote *name* also recorded the remote program/parent as agreed — and the next run
+    // then saw local-vs-shadow differ on those and published them back, silently reverting
+    // the other app. Each field is now resolved independently against the shadow.
+    projects.forEach(p => {
+      if (!p || !p.id) return;
+      if (tomb[p.id]) return;                                            // pending deletion
+      const d = { name: String(p.name || '').trim(), program: p.parentGroup || null, parentId: p.parentProjectId || null };
+      const r = remote.get(p.id);
+      if (!r) { queue(p.id, d, false); nextShadow[p.id] = d; return; }   // created here
+      if (r.archived) return;                                            // the archive pass owns this
+      const rn = _regNorm(r), s = shadow[p.id] || null;
+      const out = {}; let pubNeeded = false, projChanged = false;
+      [['name','name'], ['program','parentGroup'], ['parentId','parentProjectId']].forEach(([f, localField]) => {
+        const dv = d[f], rv = rn[f], sv = s ? s[f] : undefined;
+        if (dv === rv) { out[f] = dv; return; }                          // already agree
+        const movedLocal  = !s || dv !== sv;
+        const movedRemote = !s || rv !== sv;
+        if (movedRemote) {
+          // Adopt: covers remote-only changes, both-sides conflicts (the Safety Tracker is
+          // master) and the no-shadow first run — which is what makes that first reconcile
+          // one-way Safety -> Projects rather than pushing this app's stale names back.
+          if (f === 'name' && !rv) { out[f] = dv; pubNeeded = pubNeeded || movedLocal; return; }  // never adopt an empty name
+          if (p[localField] !== rv) { p[localField] = rv; projChanged = true; }
+          out[f] = rv;
+        } else if (movedLocal) { out[f] = dv; pubNeeded = true; }
+        else { out[f] = sv; }
+      });
+      if (projChanged) { p.updatedAt = nowISO; localChanged = true; }    // per project, not the shared accumulator
+      if (pubNeeded) queue(p.id, out, false, r.origin_app);
+      nextShadow[p.id] = out;
+    });
+
+    // ── deleted here -> archive in the registry ──
+    // Review fix (CRITICAL): this used to infer deletion from "in the shadow but not in the
+    // local array". The shadow is written synchronously while the matching local state only
+    // reaches the cloud via an 800ms debounced push, so any pull/import/crash inside that
+    // window made the shadow claim a project the array lacked — read as a deletion, which
+    // propagated to the Safety Tracker as an irreversible tombstone. Deletion is now an
+    // explicit signal written only by deleteProject().
+    Object.keys(tomb).forEach(id => {
+      const r = remote.get(id); if (!r) return;
+      if (!r.archived) queue(id, _regNorm(r), true, r.origin_app);
+      nextShadow[id] = _regNorm(r);
+    });
+
+    // ── archived in the registry -> remove here ──
+    safeRows.forEach(r => {
+      if (!r.archived || !byId.has(r.id)) return;
+      const i = projects.findIndex(p => p.id === r.id);
+      if (i >= 0) { projects.splice(i, 1); localChanged = true; }
+      // Promote any children so they don't keep a dangling parentProjectId — which would
+      // drop them out of the schedule and the executive report (and be republished).
+      projects.forEach(k => { if (k.parentProjectId === r.id) { k.parentProjectId = null; k.updatedAt = nowISO; localChanged = true; } });
+      if (!tomb[r.id]) { tomb[r.id] = nowISO; localChanged = true; }     // don't re-publish it as "created here"
+      nextShadow[r.id] = _regNorm(r);
+    });
+
+    // ── in the registry but not here -> create a stub ──
+    safeRows.forEach(r => {
+      if (r.archived || byId.has(r.id) || tomb[r.id]) return;
+      projects.unshift({
+        id: r.id, name: r.name, parentGroup: r.program || null, parentProjectId: r.parent_id || null,
+        category: '', description: '', notes: '', contractor: '', gacaRef: '', packageRef: '',
+        createdAt: nowISO, updatedAt: nowISO, milestones: {}, stageDocs: {}, scope: [],
+      });
+      localChanged = true;
+      nextShadow[r.id] = _regNorm(r);
+    });
+
+    if (localChanged) { lsSet(DELETED_KEY, tomb); lsSet(STORAGE_KEY, projects); }  // lsSet schedules the team_state push itself
+    if (upserts.length) {
+      const { error: upErr } = await sbClient.from(REG_TABLE).upsert(upserts, { onConflict: 'id' });
+      // Leave the shadow untouched on a failed publish so the next run retries rather than
+      // recording changes that never landed. A Safety-Tracker viewer signing in here is the
+      // expected case: RLS rejects the write, and roster sync degrades to read-only.
+      if (upErr) { console.warn('[registry] push failed', upErr); _regLastRun = Date.now(); return localChanged; }
+    }
+    lsSet(REG_SHADOW_KEY, nextShadow);
+    _regLastRun = Date.now();
+    return localChanged;
+  } catch (err) {
+    console.warn('[registry] reconcile error', err);
+    _regLastRun = Date.now();   // don't let a failing registry turn every push into a retry storm
+    return false;
+  } finally { _regRunning = false; }
+}
+
+// Fire-and-forget wrapper — kept off the sync critical path so a registry failure can never
+// break team_state sync. Only re-renders when the reconcile actually changed something.
+function regReconcileSoon(force) {
+  regReconcile(force).then(changed => {
+    if (!changed) return;
+    loadProjects();
+    state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
+    if (state.selectedId) renderProjectDetail();
+    renderSidebar();
+  }).catch(e => console.warn('[registry] reconcile failed', e));
 }
 
 function initCloudSync() {
@@ -3765,39 +3986,187 @@ function setSbFilter(f,btn) {
   renderSidebar();
   if (state.view==='home') renderHomepage();
 }
+/* ══════════════════════════════════════════════════
+   PROJECT HIERARCHY — program → project → sub-project (P17 phase 2)
+══════════════════════════════════════════════════
+   `parentProjectId` points at a PROJECT, never a MOC. The Safety Tracker owns the MOC
+   linkage (an addendum's parentMocId) and resolves it to the owning project before
+   publishing it to the registry, so nothing in this app needs to understand MOCs.
+
+   ⚠️ Two DELIBERATELY DIFFERENT behaviours — do not "align" them:
+     • KPIs: a sub-project scores INDEPENDENTLY, as its own unit. calcKPIs()/
+       projectKPIHealth() read only their own project's stageDocs and must stay that way.
+     • Schedule + executive report: a sub-project FOLDS INTO its parent's bar, via
+       topLevelProjects() and familyMilestones() below.
+   This split is the owner's explicit decision (see PENDING_CHANGES.md P17) and differs
+   on purpose from the Safety Tracker, which rolls up everywhere. */
+function isSubProject(p) { return !!(p && p.parentProjectId); }
+function parentProjectOf(p) {
+  if (!p || !p.parentProjectId) return null;
+  return state.projects.find(x => x.id === p.parentProjectId) || null;
+}
+// DIRECT children only — used by the sidebar (one level of indent) and the delete prompt.
+function subProjectsOf(p) {
+  if (!p || !p.id) return [];
+  return state.projects.filter(x => x.parentProjectId === p.id);
+}
+// Every descendant, at any depth. Folding must use this, not subProjectsOf: the Safety
+// Tracker can in principle publish an addendum-of-an-addendum, and a project can be
+// reparented locally, so a 3-deep chain is reachable. Review fix — the grandchild used to
+// be excluded from the reporting roots AND never folded into anyone, vanishing entirely
+// from the schedule and the executive report. Cycle-guarded via `seen`.
+function descendantsOf(p, list) {
+  const src = list || state.projects;
+  if (!p || !p.id) return [];
+  const out = [], seen = new Set([p.id]);
+  let frontier = [p.id];
+  while (frontier.length) {
+    const next = [];
+    src.forEach(x => {
+      if (!x || !x.id || seen.has(x.id)) return;
+      if (frontier.indexOf(x.parentProjectId) >= 0) { seen.add(x.id); out.push(x); next.push(x.id); }
+    });
+    frontier = next;
+  }
+  return out;
+}
+// A sub-project with no program of its own inherits its parent's — mirrors the Safety
+// Tracker's effectiveProgram(). Without this, a real record (KSIA Enabling Works 2 —
+// Addendum 1, which has no parentGroup on either side) renders as orphaned.
+// Cycle-guarded: a malformed parent chain resolves to null rather than hanging a render.
+function effectiveProgram(p, _seen) {
+  if (!p) return null;
+  const own = String(p.parentGroup || '').trim();
+  if (own) return own;
+  const seen = _seen || new Set();
+  if (seen.has(p.id)) return null;
+  seen.add(p.id);
+  const par = parentProjectOf(p);
+  return par ? effectiveProgram(par, seen) : null;
+}
+// The unit the schedule and the executive report roll up to. NOT used by the KPI engine.
+// The reporting roots for the schedule and the executive report. A project is a root when
+// walking up parentProjectId can't reach anyone present in the list. Review fix: this used
+// to be a flat `!isSubProject(p)`, which silently excluded BOTH an orphan (parent archived
+// via the registry) and a grandchild — neither appeared as a row and neither was folded
+// into anyone, so they vanished from the Gantt and the deck while still showing in the
+// sidebar. Cycle-guarded, so a malformed chain resolves instead of looping.
+function topLevelProjects(list) {
+  const src = list || state.projects;
+  const byId = new Map(src.map(p => [p.id, p]));
+  const rootOf = p => {
+    const seen = new Set(); let cur = p;
+    while (cur && cur.parentProjectId && byId.has(cur.parentProjectId) && !seen.has(cur.id)) {
+      seen.add(cur.id); cur = byId.get(cur.parentProjectId);
+    }
+    return cur || p;
+  };
+  return src.filter(p => rootOf(p) === p);
+}
+
+// Folded planned/baseline is the EARLIEST across the family for start-like milestones — but
+// the LATEST for completion, because a family cannot finish before its slowest member. The
+// owner asked for this asymmetry specifically: taking the earliest here made a parent
+// forecast to finish Dec 2026 with an addendum running to Jun 2027 report Dec 2026.
+const FOLD_LATEST_MS = new Set(['project_completion']);
+
+// Merged milestone map for a project *and every descendant*, used only where the owner asked
+// for the folded view (schedule bars, executive report). A project's own tabs and its KPIs
+// keep reading p.milestones untouched.
+function familyMilestones(p) {
+  const subs = descendantsOf(p);
+  if (!subs.length) return p.milestones || {};
+  const family = [p].concat(subs);
+  const out = {};
+  MILESTONES.forEach(m => {
+    const cells = family.map(x => (x.milestones || {})[m.key] || {});
+    const pick = (f, latest) => {
+      const v = cells.map(c => c[f]).filter(Boolean).sort();          // ISO 'YYYY-MM-DD' sorts lexically
+      return v.length ? (latest ? v[v.length - 1] : v[0]) : null;
+    };
+    const latest   = FOLD_LATEST_MS.has(m.key);
+    const planned  = pick('planned',  latest);
+    const baseline = pick('baseline', latest);
+    // A cell counts as "expected" if it carries ANY of the three dates — an actual is its own
+    // evidence that the milestone was expected. Review fix (CRITICAL): requiring
+    // planned||baseline discarded real completions on the most common data shape there is,
+    // because deriveMilestoneDates auto-derives `actual` for 7 of the 10 milestones and never
+    // writes planned/baseline for them. A family would report 0% and its markers would drop
+    // out of the Gantt entirely.
+    const expected = cells.filter(c => c.planned || c.baseline || c.actual);
+    const actuals  = cells.map(c => c.actual).filter(Boolean).sort();
+    const allDone  = expected.length > 0 && expected.every(c => c.actual);
+    out[m.key] = { planned, baseline, actual: allDone ? actuals[actuals.length - 1] : null };
+  });
+  return out;
+}
+// Family-aware status/progress. ⚠️ INTENTIONALLY UNUSED by the app — the schedule and the
+// report fold via shallow clones instead (see renderScheduleView). Kept for tests and as the
+// documented way to fold; do NOT wire these into the sidebar or the homepage cards, which
+// must keep showing each project's own figures.
+function getFamilyStatus(p)   { return descendantsOf(p).length ? getStatus({ ...p, milestones: familyMilestones(p) })   : getStatus(p); }
+function getFamilyProgress(p) { return descendantsOf(p).length ? getProgress({ ...p, milestones: familyMilestones(p) }) : getProgress(p); }
+
+// Order a list as program → project → sub-project, so the sidebar and homepage cards share
+// one hierarchy. A sub-project whose parent was filtered out (search/status filter) is
+// promoted to top level rather than disappearing, and anything left over by a broken parent
+// chain is appended — nothing is ever silently dropped from the list.
+function orderByHierarchy(list) {
+  const present = new Set(list.map(p => p.id));
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+  const byProgThenName = (a, b) => {
+    const ag = effectiveProgram(a) || '￿', bg = effectiveProgram(b) || '￿';
+    return ag !== bg ? ag.localeCompare(bg) : byName(a, b);
+  };
+  const roots = list.filter(p => !isSubProject(p) || !present.has(p.parentProjectId)).sort(byProgThenName);
+  // Keyed on the object, not the id: two records sharing an id (hand-edited session file)
+  // must both still render rather than one being silently swallowed.
+  const out = [], pushed = new Set();
+  const walk = (p, depth) => {
+    if (pushed.has(p)) return;
+    out.push({ p, depth }); pushed.add(p);
+    list.filter(x => x.parentProjectId === p.id && !pushed.has(x)).sort(byName)
+        .forEach(s => walk(s, Math.min(depth + 1, 1)));   // display depth caps at one indent
+  };
+  roots.forEach(r => walk(r, 0));
+  // Leftovers can only come from a cycle. Sorted the same way so they group sensibly.
+  list.filter(p => !pushed.has(p)).sort(byProgThenName).forEach(p => { out.push({ p, depth: 0 }); pushed.add(p); });
+  return out;
+}
+
 function getVisible() {
   const q=document.getElementById('sideSearch').value.toLowerCase();
   const filtered=state.projects.filter(p=>{
     const text=[p.name,p.category,p.contractor].filter(Boolean).join(' ').toLowerCase();
     return (!q||text.includes(q))&&(state.sbFilter==='all'||getStatus(p)===state.sbFilter);
   });
-  // Sort so grouped projects appear together; standalones go last
-  return filtered.sort((a,b)=>{
-    const ag=a.parentGroup||'', bg=b.parentGroup||'';
-    if (ag===bg) return 0;
-    if (!ag) return 1;
-    if (!bg) return -1;
-    return ag.localeCompare(bg);
-  });
+  // Ordering (program → project → sub-project, standalones last) is orderByHierarchy's
+  // job now — callers that render a list run this through it. P17 phase 2.
+  return filtered;
 }
 function renderSidebar() {
   const list=document.getElementById('sidebarList');
   const visible=getVisible();
   if (!visible.length) { list.innerHTML=`<div class="sb-empty">${state.projects.length===0?'No projects yet.<br>Click "Add Project" below.':'No matches.'}</div>`; updateStats(); return; }
-  // Build grouped list
+  // Build the three-level list: program → project → sub-project (P17 phase 2).
   let html='';
+  let currentGroup;                       // undefined until the first row decides one
+  // Review fix: orderByHierarchy's cycle-leftover pass appends rows after the main run, so a
+  // program could be re-opened and its header emitted twice. Emit each header at most once.
   const seenGroups=new Set();
-  visible.forEach(p=>{
-    const g=p.parentGroup||null;
-    if (g && !seenGroups.has(g)) {
-      seenGroups.add(g);
-      html+=`<div class="sb-group-hdr">${esc(g)}</div>`;
+  orderByHierarchy(visible).forEach(({p,depth})=>{
+    if (depth===0) {
+      const g=effectiveProgram(p)||null;
+      if (g!==currentGroup) { currentGroup=g; if (g && !seenGroups.has(g)) { seenGroups.add(g); html+=`<div class="sb-group-hdr">${esc(g)}</div>`; } }
     }
+    // Status and progress stay per-project here — a sub-project is its own unit
+    // everywhere except the schedule and the executive report.
     const st=getStatus(p), pr=getProgress(p);
-    const indent=g?'sb-project-child':'';
-    html+=`<div class="sb-project ${indent} ${p.id===state.selectedId?'active':''}" onclick="showDetail('${p.id}')">
-      <div class="sb-proj-top"><div class="sb-proj-name">${esc(p.name)}</div><div class="status-dot dot-${statusCls(st)}"></div></div>
-      <div class="sb-proj-sub">${esc(p.category||'—')} · ${pr.pct}%</div>
+    const indent=depth===1?'sb-project-sub':(effectiveProgram(p)?'sb-project-child':'');
+    const subCount=depth===0?subProjectsOf(p).length:0;
+    html+=`<div class="sb-project ${indent} ${p.id===state.selectedId?'active':''}" onclick="showDetail('${esc(p.id)}')">
+      <div class="sb-proj-top"><div class="sb-proj-name">${depth===1?'<span class="sb-sub-tag">↳</span>':''}${esc(p.name)}</div><div class="status-dot dot-${statusCls(st)}"></div></div>
+      <div class="sb-proj-sub">${esc(p.category||'—')} · ${pr.pct}%${subCount?` · ${subCount} sub-project${subCount!==1?'s':''}`:''}</div>
       <div class="sb-proj-bar"><div class="sb-proj-bar-fill" style="width:${pr.pct}%"></div></div>
     </div>`;
   });
@@ -3879,24 +4248,31 @@ function renderHomepage() {
   if (!visible.length) {
     cardsHtml=`<div class="hp-empty"><h3>${total===0?'No projects yet':'No matches'}</h3><p>${total===0?'Create your first project to get started.':'Try clearing the search or filter.'}</p>${total===0?'<button class="btn btn-primary" style="margin-top:16px;" onclick="openAddModal()">Add First Project</button>':''}</div>`;
   } else {
-    const seenGroups=new Set();
-    cardsHtml=visible.map(p=>{
+    let currentGroup;   // P17 phase 2 — undefined until the first card decides one
+    const _seenGroups=new Set();   // review fix: never emit the same program header twice
+    cardsHtml=orderByHierarchy(visible).map(({p,depth})=>{
       const st=getStatus(p), pr=getProgress(p), cd=getCompletionDate(p);
       const currMs=getCurrentMs(p), open=getTotalOpen(p);
       const hasScope=p.scope?.length>=3;
       const visualHtml=hasScope
-        ?`<div class="card-map-el" id="cmap-${p.id}"></div>`
+        ?`<div class="card-map-el" id="cmap-${esc(p.id)}"></div>`
         :`<div class="card-no-scope" style="background:${STATUS_GRAD[st]};"><span class="card-initial" style="color:${STATUS_INIT_CLR[st]}">${esc(getInitials(p.name))}</span></div>`;
       const barColor=pr.pct===100?'var(--green)':pr.pct>0?'var(--accent)':'var(--border-faint)';
-      const g=p.parentGroup||null;
       let groupHdr='';
-      if (g && !seenGroups.has(g)) { seenGroups.add(g); groupHdr=`<div class="hp-group-hdr">${esc(g)}</div>`; }
+      if (depth===0) {
+        const g=effectiveProgram(p)||null;
+        if (g!==currentGroup) { currentGroup=g; if (g && !_seenGroups.has(g)) { _seenGroups.add(g); groupHdr=`<div class="hp-group-hdr">${esc(g)}</div>`; } }
+      }
+      // Cards live in a grid, so a sub-project is labelled rather than indented — it still
+      // sorts directly after its parent via orderByHierarchy.
+      const _par=depth===1?parentProjectOf(p):null;
+      const subNote=_par?`<div class="hp-sub-note">↳ Sub-project of ${esc(_par.name)}</div>`:'';
       const kpiH = projectKPIHealth(p);
       const kpiStrip = kpiH ? `<div class="kpi-health-strip" title="KPI 1–7 health: ${kpiH.green} green · ${kpiH.amber} amber · ${kpiH.red} red">
         ${kpiH.rags.map(r=>`<div class="kpi-dot" style="background:${r==='green'?'var(--green)':r==='amber'?'var(--amber)':r==='red'?'var(--red)':'var(--border)'};opacity:${r==='none'?.3:1};"></div>`).join('')}
         <span style="font-size:9.5px;color:var(--text-3);margin-left:2px;">${kpiH.green}/${kpiH.withData} KPIs</span>
       </div>` : '';
-      return groupHdr+`<div class="project-card" onclick="showDetail('${p.id}')">
+      return groupHdr+`<div class="project-card" onclick="showDetail('${esc(p.id)}')">
         <div class="card-visual">
           ${visualHtml}
           <div class="card-badge-tl"><span class="status-pill pill-${statusCls(st)}">${STATUS_LABEL[st]}</span></div>
@@ -3904,6 +4280,7 @@ function renderHomepage() {
         </div>
         <div class="card-body">
           <div class="card-name">${esc(p.name)}</div>
+          ${subNote}
           <div class="card-chips">
             ${p.category?`<span class="cat-pill">${esc(p.category)}</span>`:''}
           </div>
@@ -4239,6 +4616,12 @@ function calcPSQSFromRegistry(ev, registry) {
   return { ops, eng, sms, total: ops+eng+sms };
 }
 
+/* ⚠️ P17 phase 2 — a SUB-PROJECT SCORES INDEPENDENTLY, as its own unit. This function reads
+   only `p`'s own stageDocs and must keep doing so: do NOT add familyMilestones()/
+   subProjectsOf() roll-up here to "match" the schedule and executive report, which
+   deliberately fold sub-projects into their parent. The two behaving differently is the
+   owner's explicit decision (PENDING_CHANGES.md P17), and differs on purpose from the
+   Safety Tracker, which rolls up everywhere. */
 function calcKPIs(p) {
   const PKG = [
     { key:'gaca_package_review',           label:'Design' },
@@ -6340,6 +6723,35 @@ function openAddModal(projectId=null) {
   }
   const newGrpInput=document.getElementById('f-group-new');
   newGrpInput.classList.add('hidden'); newGrpInput.value='';
+  /* P17 phase 2 — parent-project selector. Only top-level projects are offered, which caps
+     the tree at program → project → sub-project (the same depth the Safety Tracker allows,
+     where an addendum may only point at a non-addendum MOC). Self and any descendant are
+     excluded too, so a user can't build a cycle that would trap effectiveProgram()'s or
+     orderByHierarchy()'s parent walks. */
+  const parentSel=document.getElementById('f-parent-project');
+  const _banned=new Set();
+  if (p) { (function walk(id){ if(_banned.has(id)) return; _banned.add(id);
+    state.projects.filter(x=>x.parentProjectId===id).forEach(x=>walk(x.id)); })(p.id); }
+  // Review fix: `_banned` walks DOWNWARD, so it stops a project picking its own descendant
+  // (no cycles) — but nothing stopped a project that HAS children from becoming a child
+  // itself, silently creating a 3-deep chain. Disable the control in that case rather than
+  // letting the user build one. (topLevelProjects/descendantsOf now cope with a 3-deep chain
+  // if one arrives from the registry; this just stops the UI manufacturing them.)
+  const _hasKids=!!(p && subProjectsOf(p).length);
+  parentSel.disabled=_hasKids;
+  parentSel.title=_hasKids?'This project has sub-projects of its own. Remove them before giving it a parent.':'';
+  const parentOpts=state.projects
+    .filter(x=>!isSubProject(x) && !_banned.has(x.id))
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  const currentParent=p?.parentProjectId||'';
+  parentSel.innerHTML=`<option value="">— None (top-level project) —</option>`
+    +parentOpts.map(x=>`<option value="${esc(x.id)}" ${currentParent===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
+  if (currentParent && !parentOpts.some(x=>x.id===currentParent)) {
+    // The parent is set but not selectable (deleted, or itself became a sub-project). Show it
+    // rather than silently resetting the field to "None" and wiping the link on next save.
+    const _pp=state.projects.find(x=>x.id===currentParent);
+    parentSel.innerHTML+=`<option value="${esc(currentParent)}" selected>${_pp?esc(_pp.name):'(parent no longer available)'}</option>`;
+  }
   document.getElementById('msFormBody').innerHTML=MILESTONES.map(m=>{
     const d=p?.milestones?.[m.key]||{};
     return `<tr><td>${m.label}</td><td><input type="date" id="mb-${m.key}" value="${d.baseline||''}"/></td><td><input type="date" id="mp-${m.key}" value="${d.planned||''}"/></td><td><input type="date" id="ma-${m.key}" value="${d.actual||''}"/></td></tr>`;
@@ -6399,7 +6811,16 @@ function saveProject() {
   const editId=document.getElementById('addEditOverlay').dataset.editId;
   const grpSel=document.getElementById('f-group').value;
   const parentGroup=grpSel==='__new__'?(document.getElementById('f-group-new').value.trim()||null):grpSel||null;
-  const base={name,category:document.getElementById('f-category').value,parentGroup,gacaRef:document.getElementById('f-gaca-ref').value,contractor:document.getElementById('f-contractor').value,packageRef:document.getElementById('f-pkg-ref').value,description:document.getElementById('f-desc').value,notes:document.getElementById('f-notes').value,milestones,scope};
+  // P17 phase 2. Backstop the three-level cap in the save path too, so an id arriving from
+  // anywhere other than the (disabled-when-it-has-children) dropdown still can't build a
+  // 3-deep chain or a self-parent.
+  let parentProjectId=(document.getElementById('f-parent-project')||{}).value||null;
+  if (parentProjectId) {
+    const _pp=state.projects.find(x=>x.id===parentProjectId);
+    const _selfId=document.getElementById('addEditOverlay').dataset.editId||'';
+    if (parentProjectId===_selfId || (_pp && isSubProject(_pp)) || (_selfId && subProjectsOf({id:_selfId}).length)) parentProjectId=null;
+  }
+  const base={name,category:document.getElementById('f-category').value,parentGroup,parentProjectId,gacaRef:document.getElementById('f-gaca-ref').value,contractor:document.getElementById('f-contractor').value,packageRef:document.getElementById('f-pkg-ref').value,description:document.getElementById('f-desc').value,notes:document.getElementById('f-notes').value,milestones,scope};
   if(editId){
     const idx=state.projects.findIndex(p=>p.id===editId);
     if(idx>=0){state.projects[idx]={...state.projects[idx],...base,updatedAt:now};}
@@ -6437,8 +6858,22 @@ function saveProject() {
 }
 async function deleteProject() {
   const editId=document.getElementById('addEditOverlay').dataset.editId;
-  if(!editId||!await showConfirm('Permanently delete this project?')) return;
+  if(!editId) return;
+  // P17 phase 2: warn about sub-projects, and promote rather than orphan them. Leaving a
+  // dangling parentProjectId behind would still render (orderByHierarchy promotes anything
+  // whose parent is missing), but the record would keep claiming a parent that no longer
+  // exists and keep publishing that dangling id to the shared registry.
+  const _kids=subProjectsOf({id:editId});
+  const _msg=_kids.length
+    ? `Permanently delete this project?\n\nIts ${_kids.length} sub-project${_kids.length!==1?'s':''} will NOT be deleted — they become top-level projects.`
+    : 'Permanently delete this project?';
+  if(!await showConfirm(_msg)) return;
+  _kids.forEach(k=>{ k.parentProjectId=null; k.updatedAt=new Date().toISOString(); });
   state.projects=state.projects.filter(p=>p.id!==editId);
+  // Review fix: an explicit tombstone is the ONLY thing that tells the registry sync to
+  // archive this project (and therefore the only thing that deletes it in the Safety
+  // Tracker). Written here and nowhere else, so a deletion can never be inferred by accident.
+  const _tomb=lsGet(DELETED_KEY,{})||{}; _tomb[editId]=new Date().toISOString(); lsSet(DELETED_KEY,_tomb);
   saveProjects(); closeAddModal(true);
   showHomepage(); renderSidebar();
 }
@@ -7635,7 +8070,7 @@ function buildRiskRegisterStageHTML(p, stageKey) {
             ${_pill('open','Open',obsOpen)}
             ${_pill('closed','Closed',obsClosed)}
           </span>
-          <button class="btn btn-ghost btn-xs" onclick="exportObsExcel('${p.id}','${stageKey}')">
+          <button class="btn btn-ghost btn-xs" onclick="exportObsExcel('${esc(p.id)}','${esc(stageKey)}')">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export Excel
           </button>`});
@@ -10980,7 +11415,7 @@ function buildTaskGridHTML(p) {
       </table>
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:10px;">
-      <button class="btn btn-ghost" onclick="addTask('${p.id}')" style="font-size:11.5px;">
+      <button class="btn btn-ghost" onclick="addTask('${esc(p.id)}')" style="font-size:11.5px;">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Task
       </button>
@@ -11336,14 +11771,26 @@ function saveMsField(msKey, type, val) {
 function renderScheduleView() {
   const sv = document.getElementById('scheduleView');
   if (!sv) return;
-  const projs = state.projects;
+  /* P17 phase 2 — sub-projects FOLD INTO their parent's bar here (owner decision): they get
+     no row of their own, and their milestone dates merge into the parent's. Done by handing
+     the rest of this function shallow clones carrying familyMilestones(), so every
+     p.milestones / getStatus(p) / getProgress(p) read below folds automatically rather than
+     each one having to remember to. The clones are render-only — nothing here mutates them.
+     KPIs deliberately do NOT fold; a sub-project scores as its own unit. See the hierarchy
+     block near getVisible(). */
+  const _tops = topLevelProjects();
+  const projs = _tops.map(p => {
+    const subs = descendantsOf(p);
+    return subs.length ? { ...p, milestones: familyMilestones(p), _subCount: subs.length } : p;
+  });
+  const _foldedCount = _tops.reduce((n, p) => n + descendantsOf(p).length, 0);
 
   const hdr = `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <div>
         <div style="font-size:20px;font-weight:700;color:var(--text-1);">Portfolio Schedule</div>
         <div style="font-size:12px;color:var(--text-3);margin-top:4px;">
-          ${projs.length} project${projs.length!==1?'s':''} · Milestone timeline · Baseline vs. forecast
+          ${projs.length} project${projs.length!==1?'s':''}${_foldedCount?` · ${_foldedCount} sub-project${_foldedCount!==1?'s':''} folded in`:''} · Milestone timeline · Baseline vs. forecast
         </div>
       </div>
     </div>`;
@@ -11553,7 +12000,11 @@ function renderScheduleView() {
     const slipN=MILESTONES.filter(m=>{const d=(p.milestones||{})[m.key]||{};return !d.actual&&d.baseline&&d.planned&&new Date(d.planned)>new Date(d.baseline);}).length;
     gO += `<text x="${LW-12}" y="${rowY+20}" font-size="12" font-weight="700" fill="#1E293B" text-anchor="end" font-family="system-ui,sans-serif">${esc(nm)}</text>`;
     gO += `<text x="${LW-12}" y="${rowY+36}" font-size="9.5" fill="${sc}" font-weight="600" text-anchor="end" font-family="system-ui,sans-serif">${pr.pct}% · ${si.replace(/-/g,' ')}</text>`;
-    if(slipN>0) gO+=`<text x="${LW-12}" y="${rowY+51}" font-size="9" fill="#DC2626" font-weight="600" text-anchor="end" font-family="system-ui,sans-serif">⚠ ${slipN} slipping</text>`;
+    // Stack the optional lines so the folded-sub-project note and the slip warning can both
+    // show without overlapping (ROW_H is 130, so there's room for two more lines).
+    let _ly = rowY+51;
+    if(p._subCount) { gO+=`<text x="${LW-12}" y="${_ly}" font-size="9" fill="#64748B" font-weight="600" text-anchor="end" font-family="system-ui,sans-serif">incl. ${p._subCount} sub-project${p._subCount!==1?'s':''}</text>`; _ly+=14; }
+    if(slipN>0) gO+=`<text x="${LW-12}" y="${_ly}" font-size="9" fill="#DC2626" font-weight="600" text-anchor="end" font-family="system-ui,sans-serif">⚠ ${slipN} slipping</text>`;
   });
 
   /* ══ LEGEND ══ */
@@ -12171,9 +12622,20 @@ function _rptNextMs(p) {
   for(const m of MILESTONES){const v=p.milestones?.[m.key]||{};if(!v.actual&&v.planned)return {label:m.label,date:v.planned};}
   return null;
 }
+/* Review fix: these four all read stageDocs, and the portfolio report folds a sub-project
+   into its parent's ROW — so without this the sub-project's observations, hazards and
+   comment-closure appeared nowhere in the deck at all (it gets no slide of its own) and the
+   portfolio totals silently understated open risk. `_family` is set by
+   exportPortfolioReport() for a parent that has descendants; the per-project report passes a
+   plain project, where `_family || [p]` degrades to exactly the old behaviour. */
+function _rptFamilyStageDocs(p) {
+  const out=[];
+  (p._family || [p]).forEach(x => { for(const sd of Object.values(x.stageDocs||{})) out.push(sd); });
+  return out;
+}
 function _rptClosure(p) {
   let raised=0,closed=0;
-  for(const sd of Object.values(p.stageDocs||{})){
+  for(const sd of _rptFamilyStageDocs(p)){
     for(const e of (sd.reviewEvents||[])){raised+=e.commentsRaised||0;closed+=e.commentsClosed||0;}
     for(const r of (sd.submissionLog||[])){raised+=r.commentsRaised||0;closed+=r.commentsClosed||0;}
   }
@@ -12181,12 +12643,12 @@ function _rptClosure(p) {
 }
 function _rptOpenObs(p) {
   let n=0;
-  for(const sd of Object.values(p.stageDocs||{})) n+=(sd.observations||[]).filter(o=>o.status!=='closed').length;
+  for(const sd of _rptFamilyStageDocs(p)) n+=(sd.observations||[]).filter(o=>o.status!=='closed').length;
   return n;
 }
 function _rptOpenHazards(p) {
   let n=0;
-  for(const sd of Object.values(p.stageDocs||{})){
+  for(const sd of _rptFamilyStageDocs(p)){
     for(const h of (sd.riskRegister?.hazards||[])){
       if((h.controlEvals||[]).some(e=>['unverified','not_impl','impl_not_eff'].includes(e.status))) n++;
     }
@@ -12195,7 +12657,7 @@ function _rptOpenHazards(p) {
 }
 function _rptAllObs(p) {
   const rows=[];
-  for(const sd of Object.values(p.stageDocs||{})){
+  for(const sd of _rptFamilyStageDocs(p)){
     for(const o of (sd.observations||[])){
       const days=o.dateObservation?Math.floor((new Date()-new Date(o.dateObservation))/86400000):null;
       rows.push({...o, daysOpen:o.status==='closed'?null:days});
@@ -12293,10 +12755,25 @@ async function exportPortfolioReport() {
   try {
     const prs=new PptxGenJS(); prs.layout='LAYOUT_WIDE'; prs.title='KSIA Portfolio Executive Report';
     const today=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
-    const projs=state.projects;
+    /* P17 phase 2 — sub-projects FOLD INTO their parent here (owner decision): no row or
+       slide of their own, milestone dates merged into the parent's via familyMilestones().
+       Same shallow-clone approach as renderScheduleView, so every p.milestones/getStatus/
+       getProgress read below folds automatically. KPI figures are unaffected — calcKPIs()
+       reads stageDocs, not milestones, and a sub-project still scores as its own unit on
+       its own KPI tab. */
+    const _tops=topLevelProjects();
+    const projs=_tops.map(p=>{
+      const subs=descendantsOf(p);
+      // _family carries the whole family so the observation/hazard/closure figures below can
+      // be summed across it — the owner's call: sub-project risk data folds into the parent's
+      // row rather than disappearing from the deck (it has no slide of its own).
+      return subs.length?{...p,milestones:familyMilestones(p),_subCount:subs.length,_family:[p].concat(subs)}:p;
+    });
+    const _folded=_tops.reduce((n,p)=>n+descendantsOf(p).length,0);
 
     // ── Slide 1: Cover ──
-    _rptCoverSlide(prs,'KSIA Portfolio','Executive Report',today,`${projs.length} Active Projects`);
+    _rptCoverSlide(prs,'KSIA Portfolio','Executive Report',today,
+      `${projs.length} Active Projects${_folded?` · ${_folded} sub-project${_folded!==1?'s':''} included`:''}`);
 
     // ── Slide 2: Portfolio Summary ──
     const onTrack=projs.filter(p=>getStatus(p)==='on-track').length;
@@ -13551,7 +14028,7 @@ function renderGovernanceView() {
 
   // Project filter options
   const projOpts = [`<option value="all" ${govFilters.project==='all'?'selected':''}>All Projects</option>`]
-    .concat(state.projects.map(p=>`<option value="${p.id}" ${govFilters.project===p.id?'selected':''}>${esc(p.name)}</option>`)).join('');
+    .concat(state.projects.map(p=>`<option value="${esc(p.id)}" ${govFilters.project===p.id?'selected':''}>${esc(p.name)}</option>`)).join('');
 
   // Assignee filter options
   const assOpts = [`<option value="all" ${govFilters.assignee==='all'?'selected':''}>All Assignees</option>`]
@@ -13638,7 +14115,7 @@ function openGovActionModal(id) {
 
   // Project select
   const psel = document.getElementById('gov-f-linkedProject');
-  psel.innerHTML = `<option value="">None / General</option>${state.projects.map(p=>`<option value="${p.id}"${p.id===a?.linkedProject?' selected':''}>${esc(p.name)}</option>`).join('')}`;
+  psel.innerHTML = `<option value="">None / General</option>${state.projects.map(p=>`<option value="${esc(p.id)}"${p.id===a?.linkedProject?' selected':''}>${esc(p.name)}</option>`).join('')}`;
 
   // Persons selects
   document.getElementById('gov-f-assignedTo').innerHTML = govPersonOptions(a?.assignedTo||'');
@@ -14097,6 +14574,7 @@ function downloadSession() {
     projects:    lsGet(STORAGE_KEY, []),
     governance:  lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}),
     kpiSettings: lsGet(KPI_SETTINGS_KEY, {}),
+    deletedProjects: lsGet(DELETED_KEY, {}),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
@@ -14152,6 +14630,14 @@ async function loadSessionFile(input) {
     if (data.projects)    results.push(lsSet(STORAGE_KEY,      data.projects));
     if (data.governance)  results.push(lsSet(GOVERNANCE_KEY,   data.governance));
     if (data.kpiSettings) results.push(lsSet(KPI_SETTINGS_KEY, data.kpiSettings));
+    if (data.deletedProjects && typeof data.deletedProjects === 'object') results.push(lsSet(DELETED_KEY, data.deletedProjects));
+    // Review fix (CRITICAL): an import replaces the roster wholesale, so the registry shadow
+    // — which describes the roster that was here a moment ago — is now meaningless. Clearing
+    // it makes the next reconcile treat the imported roster as a first run (adopt, don't
+    // publish) instead of reading every project the backup happens to predate as a change.
+    // Deletions still propagate, because they now travel as explicit tombstones above.
+    try { localStorage.removeItem(REG_SHADOW_KEY); } catch (e) {}
+    _regLastRun = 0;
   } finally {
     _sbApplyingRemote = false;
   }
