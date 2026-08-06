@@ -7,9 +7,17 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 - **P18 — Cloud Sync: last-synced date + who last saved.** From in-app feedback
   (05 Aug 2026, v3.0 · Homepage): *"in the 'Cloud Sync', the last sync should also
   display the date (in addition to the time) and if possible - who was last user?"*
-  Implemented on the owner's explicit "go ahead with all". **Not deployed** —
-  `public/index.html` is untouched and still at v4.2, awaiting a separate explicit
-  "ship it".
+  Implemented on the owner's explicit "go ahead with all", reviewed by Fable 5, and
+  **deployed 06 Aug 2026** on the owner's explicit "apply the trigger migration and
+  ship both".
+
+  ⚠️ **Caveat on the "not deployed" note this entry originally carried.** It said
+  `public/index.html` was untouched and nothing was live. That was true of the deploy
+  *copy*, but it assumed only the tracked branch deploys. In the Safety Tracker
+  sibling that assumption was proven false the same day — any branch push deploys
+  there — and this Worker is configured the same way, so the working-branch pushes of
+  v4.3 may well have been live before the explicit "ship it". Not directly verified
+  here. See `CLAUDE.md` § Deployment.
 
   - **The date.** All three "Last synced" sites (the first-push insert, the CAS
     update, and the pull) formatted with `toLocaleTimeString()` only, so the panel

@@ -36,8 +36,23 @@ https://aimo-projects-tracker.ideandaai.workers.dev.
   Cloudflare dashboard (Settings → Builds → Branch control) — that step is
   dashboard-only and can't be done from an agent session. **Until then, a push to
   `main` does not deploy**; keep both branches in lockstep. See `docs/CLOUDFLARE.md`.
-- **A push to the tracked branch is a deploy** — same "push is a deploy" model as the
-  Safety Tracker sibling, just not on `main` yet.
+- ### ⚠️ Assume ANY branch push deploys, not just the tracked branch
+  In the Safety Tracker sibling this was **verified on 06 Aug 2026**: a push to a
+  `claude/…` working branch went live on the production URL with no merge to the
+  tracked branch, which caused two unapproved deploys there. The two Workers are
+  configured the same way by the same person, so **treat this repo as behaving
+  identically until someone confirms otherwise in the Cloudflare dashboard**
+  (Settings → Builds → Branch control). It has *not* been directly tested here —
+  there was no safe way to test it without risking exactly the deploy the test
+  was checking for.
+- **Therefore: do not push anything not approved to ship.** Work that is built and
+  awaiting a deploy green light stays **local and unpushed**. Never report something
+  as "not deployed" on the grounds that it is only on a working branch — check the
+  live URL, and allow ~a minute of build lag before trusting the result (a check
+  immediately after a push can still return the previous version).
+- When pulling the live file to check `APP_VERSION`, download it fully before
+  grepping — a truncated stream can match near the top of the file and miss code
+  further down.
 - "Deploying" a change means: copy `aimo-tracker.html` (the working copy) →
   `public/index.html` (the deploy copy) → commit → push — only on an
   explicit "ship it," per the hard rule below.
