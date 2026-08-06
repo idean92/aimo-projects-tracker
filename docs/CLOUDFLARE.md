@@ -75,10 +75,24 @@ Notion's file-upload API) is a follow-up, not built.
 - ✅ **Live at https://aimo-projects-tracker.ideandaai.workers.dev** — `workers.dev`
   subdomain enabled (Settings → Domains & Routes), confirmed loading the app
   (v1.1, with the feedback button).
-- ⚠️ **Tracking branch `claude/review-pending-context-jbjnrg`, not `main`** — there is
-  no `main` branch in this repo yet (everything so far has been pushed straight to
-  this working branch). If/when this branch is merged into a real `main`, repoint the
-  Worker's production branch in Settings → Builds.
+- ⚠️ **Production branch migration — half done, ONE OWNER STEP REMAINING (06 Aug 2026).**
+  A real **`main` branch now exists** and was created at `dc4eab9`, the exact commit
+  the Worker is currently serving (v4.3) — so `main` and
+  `claude/review-pending-context-jbjnrg` are byte-identical right now and either one
+  builds the same site.
+
+  **The Worker still builds from `claude/review-pending-context-jbjnrg`.** Changing
+  that is dashboard-only: **Workers & Pages → aimo-projects-tracker → Settings →
+  Builds → Branch control → production branch → `main`**. There is no Cloudflare MCP
+  tool for it (the Workers tools available here are read-only), so it cannot be
+  scripted from an agent session.
+
+  **Until the owner flips that setting, `claude/review-pending-context-jbjnrg` is
+  still production** — a push to `main` alone will NOT deploy. While both branches
+  exist, keep them in lockstep: land a deploy on the tracked branch and fast-forward
+  the other to match. Once the setting is flipped, `main` becomes the only branch that
+  matters and the old branch can be retired (deleting it needs explicit owner
+  confirmation, per `CLAUDE.md` § Git workflow).
 - ⚠️ **`NOTION_API_KEY` / `NOTION_FEEDBACK_DATABASE_ID` kept getting wiped by
   deploys** (05 Aug 2026: endpoint back to `503`) — root cause and fix in
   "Feedback endpoint setup" above; `NOTION_API_KEY` must be re-added as type

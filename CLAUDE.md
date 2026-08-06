@@ -28,10 +28,14 @@ both apps, so one auth pool made more sense than two independent ones; AIMO
 Tracker's data lives in its own `projects` schema there, not mixed with the
 sibling's `public` tables). The Cloudflare Worker is connected to this GitHub repo,
 auto-builds on push, and is **live** at
-https://aimo-projects-tracker.ideandaai.workers.dev. It's currently tracking the
-`claude/review-pending-context-jbjnrg` branch as production, not `main` (no `main`
-branch exists in this repo yet) — revisit once/if that branch is merged. See
-`docs/CLOUDFLARE.md` for exact status and next steps.
+https://aimo-projects-tracker.ideandaai.workers.dev.
+- **Production branch is mid-migration (06 Aug 2026).** A real `main` branch now
+  exists, created at the exact commit the Worker is serving (v4.3), so `main` and
+  `claude/review-pending-context-jbjnrg` are identical. **The Worker still builds
+  from `claude/review-pending-context-jbjnrg`** until the owner repoints it in the
+  Cloudflare dashboard (Settings → Builds → Branch control) — that step is
+  dashboard-only and can't be done from an agent session. **Until then, a push to
+  `main` does not deploy**; keep both branches in lockstep. See `docs/CLOUDFLARE.md`.
 - **A push to the tracked branch is a deploy** — same "push is a deploy" model as the
   Safety Tracker sibling, just not on `main` yet.
 - "Deploying" a change means: copy `aimo-tracker.html` (the working copy) →
