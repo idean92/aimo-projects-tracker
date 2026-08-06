@@ -83,9 +83,18 @@ Notion's file-upload API) is a follow-up, not built.
 
   **The Worker still builds from `claude/review-pending-context-jbjnrg`.** Changing
   that is dashboard-only: **Workers & Pages → aimo-projects-tracker → Settings →
-  Builds → Branch control → production branch → `main`**. There is no Cloudflare MCP
-  tool for it (the Workers tools available here are read-only), so it cannot be
-  scripted from an agent session.
+  Builds → Branch control → production branch → `main`**. Confirmed not scriptable
+  from an agent session: the Cloudflare MCP Workers tools are read-only, and while a
+  `CLOUDFLARE_API_TOKEN` is present in the session environment it is scoped too
+  narrowly to reach account-level config — `/accounts`, `/memberships`, `/user` and
+  `/zones` all return empty or unauthorised, so the account id needed to address the
+  Builds API isn't even obtainable.
+
+  **⚠️ Note this does NOT mean other branches are safe to push.** Verified 06 Aug
+  2026: a push to `test/deploy-trigger-probe` rebuilt and redeployed the Worker
+  (`modified_on` 16:18:59Z → 16:28:35Z) even though that branch is neither `main` nor
+  the tracked branch. "Production branch" governs which branch the *dashboard*
+  labels as production, not which pushes deploy. See `CLAUDE.md` § Deployment.
 
   **Until the owner flips that setting, `claude/review-pending-context-jbjnrg` is
   still production** — a push to `main` alone will NOT deploy. While both branches

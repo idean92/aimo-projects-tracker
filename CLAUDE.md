@@ -34,17 +34,21 @@ https://aimo-projects-tracker.ideandaai.workers.dev.
   `claude/review-pending-context-jbjnrg` are identical. **The Worker still builds
   from `claude/review-pending-context-jbjnrg`** until the owner repoints it in the
   Cloudflare dashboard (Settings → Builds → Branch control) — that step is
-  dashboard-only and can't be done from an agent session. **Until then, a push to
-  `main` does not deploy**; keep both branches in lockstep. See `docs/CLOUDFLARE.md`.
-- ### ⚠️ Assume ANY branch push deploys, not just the tracked branch
-  In the Safety Tracker sibling this was **verified on 06 Aug 2026**: a push to a
-  `claude/…` working branch went live on the production URL with no merge to the
-  tracked branch, which caused two unapproved deploys there. The two Workers are
-  configured the same way by the same person, so **treat this repo as behaving
-  identically until someone confirms otherwise in the Cloudflare dashboard**
-  (Settings → Builds → Branch control). It has *not* been directly tested here —
-  there was no safe way to test it without risking exactly the deploy the test
-  was checking for.
+  dashboard-only and can't be done from an agent session. Keep both branches in
+  lockstep meanwhile. See `docs/CLOUDFLARE.md`.
+  *(An earlier draft of this line said "a push to `main` does not deploy" — that is
+  wrong; the probe below shows every branch deploys. What the setting controls is
+  which branch the dashboard treats as production, not which pushes build.)*
+- ### ⚠️ ANY branch push deploys — VERIFIED for this repo, 06 Aug 2026
+  Confirmed by direct experiment, not inferred. A **docs-only** commit (no change to
+  `public/index.html`, so the served bytes were identical and the live site could not
+  move) was pushed to `test/deploy-trigger-probe` — a branch that is neither `main`
+  nor the tracked production branch. The Worker's `modified_on` advanced from
+  16:18:59Z to 16:28:35Z, i.e. Cloudflare built and deployed from it. The live file
+  was byte-for-byte unchanged before and after, so the probe proved the trigger
+  without touching what users see.
+  The same was verified in the Safety Tracker sibling, where believing the old
+  "watches `main`" text caused two unapproved deploys.
 - **Therefore: do not push anything not approved to ship.** Work that is built and
   awaiting a deploy green light stays **local and unpushed**. Never report something
   as "not deployed" on the grounds that it is only on a working branch — check the
