@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P18 | Collapse to one entry per real project; own the roster; MOCs feed the design/commissioning milestones (paired with Safety P37) | 🆕 Consolidated 06 Aug 2026 — design agreed with the owner in conversation, **not yet approved to build** |
+| P18 | Collapse to one entry per real project; own the roster; MOCs feed the design/commissioning milestones (paired with Safety P37) | ❌ **Withdrawn 06 Aug 2026, never built** — the one-entry-per-MOC split is deliberate: a MOC needing extensive document review requires its own `stageDocs` register, which is per-project. Current arrangement stands. See the entry for why, so this isn't re-proposed |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
@@ -34,7 +34,33 @@ _(none yet)_
 
 ## 🆕 New
 - **P18 — Collapse to one entry per real project; own the roster; MOCs feed the
-  design/commissioning milestones** (06 Aug 2026, owner review of the shipped
+  design/commissioning milestones** — ❌ **WITHDRAWN**
+
+  > **❌ Withdrawn 06 Aug 2026, before any code was written. Do not re-propose
+  > without reading this first.**
+  >
+  > **Why:** the one-entry-per-MOC arrangement is *deliberate, not an artefact
+  > of the P17 sync.* Some MOCs require extensive document review and are
+  > tracked as their own project for exactly that reason. `stageDocs` is a
+  > **per-project** register keyed by milestone, so collapsing several MOCs into
+  > one project would force them to share a single design-package register
+  > (`gaca_package_review`) and a single commissioning register
+  > (`gaca_commissioning_submission`) — losing the per-MOC document review that
+  > motivated the split. The analysis below correctly established that
+  > `stageDocs` is milestone-keyed but drew the wrong conclusion from it: it
+  > read "one project per MOC" as a sync defect when it is a working
+  > requirement.
+  >
+  > **Outcome:** no change. The P17/P36 sync as shipped stands, and the 17-entry
+  > roster is correct as it is. Nothing in either app was modified — this item
+  > never left the consolidation stage.
+  >
+  > The findings below remain accurate as a description of the live data and are
+  > kept for reference. Note the proposed grouping went through two rounds
+  > (17→11, then 17→8 after the owner's amendments) before being withdrawn
+  > entirely; neither grouping was ever applied.
+
+  (06 Aug 2026, owner review of the shipped
   P17/P36 sync: *"Safety tracker tracks MOCs … a project can have several MOCs
   … Projects should own all"*). Design agreed with the owner across a Q&A pass;
   **not yet approved to build**. Paired with Safety **P37**, which covers the
