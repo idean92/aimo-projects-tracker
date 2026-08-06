@@ -2473,7 +2473,7 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v4.2';
+const APP_VERSION  = 'v4.3';
 const APP_DATE     = '06 Aug 2026';
 
 // ── What's-new changelog (P16) ──────────────────────────────────────────────
@@ -2483,6 +2483,9 @@ const APP_DATE     = '06 Aug 2026';
 // To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
 // the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
 const CHANGELOG = [
+  { v:'v4.3', date:'06 Aug 2026', items:[
+    {icon:'☁️', title:'Cloud Sync now says when, and who.', text:'The Cloud Sync panel showed only a time, which told you nothing once the last save wasn\'t today. It now shows the full date and time, and the email of whoever saved last, so you can see at a glance whether you are looking at your own change or a teammate\'s.'},
+  ]},
   { v:'v4.2', date:'06 Aug 2026', items:[
     {icon:'🔗', title:'Projects are now shared with the Safety Tracker.', text:'Your project list is shared with the AIMO Safety Tracker. Create a project in either app and it appears in the other, and renames and deletions follow across. Only the project list is shared — your documents, KPIs, schedule and observations stay in this app.'},
     {icon:'🗂️', title:'Sub-projects.', text:'Programs, projects and sub-projects (addendums) now nest the same way they do in the Safety Tracker. A sub-project still scores on its own in the KPIs, but folds into its parent in the Portfolio Schedule and the executive report.'},
@@ -2812,6 +2815,24 @@ let sbSyncStatus = 'signed-out'; // signed-out | syncing | synced | conflict | e
 let _sbApplyingRemote = false; // guards a pull's lsSet() writes from re-triggering a push
 function sbTable() { return sbClient.schema(SYNC_SCHEMA).from(SYNC_TABLE); }
 
+// P18: the "Last synced" line used to be time-only (toLocaleTimeString()), which is
+// ambiguous the moment the last save wasn't today. Now date + time, plus who wrote it.
+// `email` comes from projects.team_state.updated_by_email — updated_by is a uuid and
+// auth.users isn't client-readable, so the email is denormalised onto the row. It is
+// null for any row last written before v4.3, hence the graceful fallback.
+function _syncStamp(ts, email) {
+  let when = '';
+  if (ts) {
+    const d = new Date(ts);
+    if (!isNaN(d)) {
+      when = d.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' })
+           + ', ' + d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+    }
+  }
+  if (!when) return 'Synced';
+  return 'Last synced ' + when + (email ? ' · by ' + email : '');
+}
+
 function setSyncStatus(s, detail) {
   sbSyncStatus = s;
   const dot = document.getElementById('cloudSyncDot');
@@ -2989,8 +3010,8 @@ async function sbPushNow() {
       // overwrite each other with no conflict signal. A unique-violation here means someone
       // else's insert won the race — treat it exactly like a CAS failure below.
       const { data, error } = await sbTable()
-        .insert({ id: 'default', data: payload, updated_by: sbUser.id })
-        .select('updated_at')
+        .insert({ id: 'default', data: payload, updated_by: sbUser.id, updated_by_email: sbUser.email || null })
+        .select('updated_at, updated_by_email')
         .single();
       if (sbSessionGen !== mySessionGen) return; // session ended/changed while this was in flight
       if (error) {
@@ -3007,15 +3028,15 @@ async function sbPushNow() {
       }
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
-      setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      setSyncStatus('synced', _syncStamp(data.updated_at, data.updated_by_email));
       regReconcileSoon();   // P16: publish roster edits (create/rename/delete) outward
     } else {
       // Compare-and-swap: only succeeds if nobody else has pushed since our last pull.
       const { data, error } = await sbTable()
-        .update({ data: payload, updated_by: sbUser.id })
+        .update({ data: payload, updated_by: sbUser.id, updated_by_email: sbUser.email || null })
         .eq('id', 'default')
         .eq('updated_at', sbLastPulledAt)
-        .select('updated_at')
+        .select('updated_at, updated_by_email')
         .maybeSingle();
       if (sbSessionGen !== mySessionGen) return; // session ended/changed while this was in flight
       if (error) throw error;
@@ -3036,7 +3057,7 @@ async function sbPushNow() {
       }
       sbLastPulledAt = data.updated_at;
       if (sbEditGen === myGen) { sbDirty = false; _sbLastSyncedSnapshot = JSON.stringify(payload.projects); }
-      setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+      setSyncStatus('synced', _syncStamp(data.updated_at, data.updated_by_email));
       regReconcileSoon();   // P16: publish roster edits (create/rename/delete) outward
     }
   } catch (err) {
@@ -3058,7 +3079,7 @@ async function sbPullNow(force) {
   setSyncStatus('syncing');
   const mySessionGen = sbSessionGen; // snapshot — if sign-out happens mid-flight, this pull's result belongs to a session that no longer exists
   try {
-    const { data, error } = await sbTable().select('data, updated_at').eq('id', 'default').maybeSingle();
+    const { data, error } = await sbTable().select('data, updated_at, updated_by_email').eq('id', 'default').maybeSingle();
     if (sbSessionGen !== mySessionGen) return; // session ended/changed while this was in flight — don't apply a stale session's data over live state
     if (error) throw error;
     sbPulled = true; // mark true right after the fetch itself succeeds — a throw below (malformed
@@ -3119,7 +3140,7 @@ async function sbPullNow(force) {
         setSyncStatus('conflict');
         alert('Someone else\'s changes were just loaded from the cloud — your edit may not have been saved. If it\'s missing, your previous local data is recoverable from the "aimo_pre_pull_backup" browser storage key.');
       } else {
-        setSyncStatus('synced', 'Last synced ' + new Date(data.updated_at).toLocaleTimeString());
+        setSyncStatus('synced', _syncStamp(data.updated_at, data.updated_by_email));
       }
     } else {
       // No row yet (first-ever sign-in for this team) — nothing to pull.
@@ -14807,7 +14828,8 @@ function closeSessionModal() {
         </div>
         <div class="fgrp" style="margin-top:12px;">
           <label>Status</label>
-          <div style="font-size:12px;color:var(--text-2);" id="caSyncDetail">—</div>
+          <!-- P18: now carries date + time + the email of whoever last saved, so it wraps. -->
+          <div style="font-size:12px;color:var(--text-2);line-height:1.5;word-break:break-word;" id="caSyncDetail">—</div>
         </div>
       </div>
     </div>

@@ -48,9 +48,37 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
   it does, at the third `Last synced` site. The only real defect was the missing
   date, at all three sites. Corrected in `PENDING_CHANGES.md`.
 
-  **⚠ Not independently reviewed.** `CLAUDE.md` requires a review subagent before
-  deploying anything that touches Supabase reads/writes, and this does. That review
-  has **not** been run — it should be, before this ships.
+  **Independently reviewed (Fable 5)** — required by `CLAUDE.md`, since this touches
+  Supabase reads/writes. The review confirmed no injection path (`_syncStamp()`'s
+  output reaches only `#caSyncDetail` via `textContent`), no CAS regression, no
+  impact on the sibling's `public` tables, and genuine backward compatibility with
+  the live v4.2 build (which uses explicit column lists, never `select *`). It also
+  found one blocker, now fixed:
+
+  - **The email could name the wrong person for the whole mixed-version window.**
+    The `team_state_set_updated_at` trigger set only `updated_at`, so a **v4.2**
+    client's push advanced the timestamp while leaving the *previous v4.3 writer's*
+    email in `updated_by_email`. A v4.3 reader then saw a fresh time confidently
+    attributed to someone who hadn't touched it — and it persisted until the next
+    v4.3 push, not just momentarily. The failure lands exactly where the feature is
+    meant to help: you lose a CAS race, read "someone else's changes were just
+    loaded", check who overwrote you, and it names *you*, so you assume it was your
+    own second tab and never look at `aimo_pre_pull_backup`.
+  - **Secondary:** the email was client-asserted, so any authenticated non-viewer
+    could forge attribution via a direct PostgREST PATCH.
+  - **Fix — one migration, no client change:**
+    `projects_team_state_stamp_updated_by_email_server_side` extends the trigger to
+    `BEFORE INSERT OR UPDATE` and stamps
+    `new.updated_by_email := nullif(auth.jwt() ->> 'email','')`. This covers v4.2
+    writers too, so it corrects the problem for the whole rollout window, and makes
+    the value unforgeable. Mirrors what P17 already does for
+    `public.project_registry.updated_by`. **Verified on a throwaway probe table
+    before touching `team_state`:** a v4.2-style update (no email in the payload)
+    gets stamped from the JWT, and a payload carrying a forged `updated_by_email` is
+    overwritten with the real one. CAS is unaffected — the `.eq('updated_at', …)`
+    predicate is evaluated against the existing row before the BEFORE trigger runs.
+  - Also recorded in `docs/SUPABASE.md`, including a note that the writer's email is
+    readable by every account in the shared Supabase project.
 
 ## v4.2 — 06 Aug 2026
 - **Pre-deploy review fixes for P17** (three independent Opus reviewers — sync/

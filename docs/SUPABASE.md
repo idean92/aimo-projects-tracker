@@ -70,6 +70,51 @@ grant select, insert, update on projects.team_state to authenticated;
   RLS. Verified live: `has_schema_privilege('authenticated','projects','USAGE')`
   now returns `true`, and grants show up in `information_schema.role_table_grants`.
 
+### `updated_by_email` + server-side stamping (added 06 Aug 2026, v4.3 / P18)
+Two migrations, `projects_team_state_add_updated_by_email` then
+`projects_team_state_stamp_updated_by_email_server_side`:
+```sql
+alter table projects.team_state add column if not exists updated_by_email text;
+
+create or replace function projects.set_team_state_updated_at()
+returns trigger language plpgsql security invoker set search_path to ''
+as $$ begin
+  new.updated_at := now();
+  new.updated_by_email := nullif(auth.jwt() ->> 'email', '');
+  return new;
+end; $$;
+
+drop trigger if exists team_state_set_updated_at on projects.team_state;
+create trigger team_state_set_updated_at
+before insert or update on projects.team_state   -- was UPDATE-only
+for each row execute function projects.set_team_state_updated_at();
+```
+- **Why the column exists at all:** `updated_by` is a `uuid` and Supabase's
+  `auth.users` is not client-readable, so the client cannot resolve it to a person.
+  The email is denormalised onto the row instead.
+- **Why it is stamped server-side.** The first cut had the client write the email.
+  The pre-deploy review caught two problems with that: (a) a **v4.2** client's push
+  advances `updated_at` without touching `updated_by_email`, leaving the *previous*
+  v4.3 writer's email attached to a fresh timestamp — the UI then names the wrong
+  person, exactly when someone is reading a conflict alert to work out who
+  overwrote them; and (b) a client-asserted email is forgeable by any authenticated
+  non-viewer via a direct PostgREST PATCH. Stamping in the trigger fixes both, needs
+  no client change, and covers the v4.2 clients that keep running after v4.3 ships.
+  Same approach already used for `public.project_registry.updated_by` below.
+- **CAS is unaffected** — the `.eq('updated_at', <token>)` predicate is evaluated
+  against the existing row before the BEFORE trigger touches `NEW`.
+- Verified on a throwaway probe table before touching `team_state`: a v4.2-style
+  update (no email in the payload) gets stamped from the JWT, and an explicit
+  forged `updated_by_email` in the payload is overwritten by the real JWT email.
+- `nullif(..., '')` leaves the column null for service-role/maintenance writes that
+  carry no JWT; the client renders that as a plain date + time with no "by" clause.
+- ⚠️ **PII note.** `authenticated can read team_state` is `USING (true)`, so the
+  last writer's email is visible to **every** account in this shared Supabase
+  project — including viewer-role accounts and Safety-Tracker-only users. That is
+  acceptable for the current small, invite-only team (the header already shows each
+  user their own email, and the `data` blob is far more sensitive than one address).
+  Revisit if the auth pool ever gains an outside party, e.g. an external auditor.
+
 ## Shared table — `public.project_registry` (added 06 Aug 2026, v4.0 / Safety V6.0)
 The cross-tracker project roster (P16 here, P36 in the sibling repo). One row per
 project, **shared by both apps** — unlike `projects.team_state` (this app's blob) and
