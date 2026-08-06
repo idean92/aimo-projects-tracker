@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | 🆕 Triaged 06 Aug 2026 — **awaiting approval to implement**; the "who" half needs a Supabase migration, see below |
+| P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | 🔧 **Built & QA'd (v4.3)** — migration applied; awaiting the mandated Supabase pre-deploy review, then an explicit "ship it" |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | ✅ Shipped (v2.1) — carried live by the v3.1/v3.2 deploy. *(Status corrected 06 Aug 2026; the "awaiting ship it" text below is stale.)* |
@@ -43,10 +43,10 @@ _(none yet)_
   new Date(data.updated_at).toLocaleTimeString())` appears at three push sites
   (~lines 3010, 3039, 3122) and drops the date entirely. Replace all three with one
   `_syncStamp(ts)` helper using `toLocaleString()` (or an explicit
-  `d MMM · HH:mm`). While in there: **`sbPullNow()` (~line 3061) never sets the detail
-  at all** — so straight after sign-in the modal's Status line reads `—` until the
-  first push happens. Same bug family, fix in the same item: it already fetches
-  `updated_at`, it just never stamps it.
+  `d MMM · HH:mm`). ~~While in there: `sbPullNow()` never sets the detail at all.~~
+  **Correction (06 Aug 2026, found during implementation): that was wrong.**
+  `sbPullNow()` does set it, at the third of the three sites. The only real defect
+  was the missing date, at all three.
 
   **(b) The "who" — needs a schema change.** `projects.team_state.updated_by` is a
   `uuid` (verified against live Supabase), it is written on every push
@@ -65,6 +65,10 @@ _(none yet)_
      three to get wrong.
 
   **Recommendation: option 1**, given an invite-only team of known people.
+  **Built as option 1** on the owner's "go ahead with all" — migration
+  `projects_team_state_add_updated_by_email` applied 06 Aug 2026. See `CHANGELOG.md`
+  v4.3. Grants on the table are table-level, so the new column inherited them and
+  needed no GRANT or policy change; the live v4.2 build is unaffected by it.
 
   **Risk / process notes.** (a) alone is a trivial display fix. (b) touches Supabase
   reads/writes → `CLAUDE.md` requires a review subagent before deploying. The

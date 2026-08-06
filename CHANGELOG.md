@@ -3,6 +3,55 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v4.3 — 06 Aug 2026
+- **P18 — Cloud Sync: last-synced date + who last saved.** From in-app feedback
+  (05 Aug 2026, v3.0 · Homepage): *"in the 'Cloud Sync', the last sync should also
+  display the date (in addition to the time) and if possible - who was last user?"*
+  Implemented on the owner's explicit "go ahead with all". **Not deployed** —
+  `public/index.html` is untouched and still at v4.2, awaiting a separate explicit
+  "ship it".
+
+  - **The date.** All three "Last synced" sites (the first-push insert, the CAS
+    update, and the pull) formatted with `toLocaleTimeString()` only, so the panel
+    read `Last synced 2:32:10 PM` with no indication of *which day* — meaningless
+    the moment the last save wasn't today. Replaced with a single `_syncStamp(ts,
+    email)` helper used by all three, rendering date + short time.
+  - **The "who".** `projects.team_state.updated_by` is a `uuid`; it was written on
+    every push and read nowhere, and the client cannot resolve it because
+    Supabase's `auth.users` is not client-readable by design. Added a nullable
+    `updated_by_email text` column (migration
+    `projects_team_state_add_updated_by_email`), written alongside `updated_by` on
+    both the insert and the update paths and selected on all three read paths.
+    Chosen over a `profiles` join table or a `SECURITY DEFINER` RPC because the
+    team is small and invite-only, and this adds no new RLS surface.
+  - **Backward compatibility.** The column is additive and nullable, and grants on
+    `projects.team_state` are table-level (`authenticated`: SELECT/INSERT/UPDATE),
+    so it inherits them — no GRANT and no policy change was needed. The currently
+    live v4.2 build selects `(data, updated_at)` and writes `(data, updated_by)`,
+    so it is completely unaffected and the two versions can run side by side.
+    Rows written before this release have `updated_by_email = null` (the one live
+    row does today), and `_syncStamp()` then renders date + time with no "by"
+    clause rather than `undefined`. A null/invalid timestamp falls back to plain
+    `Synced` instead of `Invalid Date`.
+  - The Cloud Sync modal's Status line now wraps (`line-height`, `word-break`),
+    since the string carries a full timestamp plus an email address.
+
+  **Verification.** All 6 inline `<script>` blocks parse. `_syncStamp()` exercised
+  in headless Chromium across six cases — with email, without email, empty email,
+  an older day, a null timestamp and a malformed timestamp — all correct, no page
+  or console errors, and the mandatory sign-in gate still blocks the app. The
+  migration was applied to the shared Supabase project and the column verified
+  present and null on the live row.
+
+  **Correction to this item's entry in `PENDING_CHANGES.md`:** the triage note
+  claimed `sbPullNow()` "never sets the status detail at all". That was wrong —
+  it does, at the third `Last synced` site. The only real defect was the missing
+  date, at all three sites. Corrected in `PENDING_CHANGES.md`.
+
+  **⚠ Not independently reviewed.** `CLAUDE.md` requires a review subagent before
+  deploying anything that touches Supabase reads/writes, and this does. That review
+  has **not** been run — it should be, before this ships.
+
 ## v4.2 — 06 Aug 2026
 - **Pre-deploy review fixes for P17** (three independent Opus reviewers — sync/
   data-loss, hierarchy/KPI, and security — run on the owner's instruction before
