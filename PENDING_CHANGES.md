@@ -36,8 +36,9 @@ _(none yet)_
 - **P18 — Cloud Sync: last-synced date + who last saved** (06 Aug 2026, in-app
   feedback via the Notion Feedback Inbox, submitted 05 Aug 2026 against v3.0 ·
   Homepage: *"in the 'Cloud Sync', the last sync should also display the date (in
-  addition to the time) and if possible - who was last user?"*). Consolidated only —
-  **nothing implemented**. Two halves with very different cost:
+  addition to the time) and if possible - who was last user?"*). **Built and QA'd as
+  v4.3** on the owner's "go ahead with all" — not deployed. Two halves with very
+  different cost:
 
   **(a) The date — small, self-contained.** `setSyncStatus('synced', 'Last synced ' +
   new Date(data.updated_at).toLocaleTimeString())` appears at three push sites
