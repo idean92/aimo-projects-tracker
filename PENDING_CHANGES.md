@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
@@ -31,6 +32,101 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
+- **P17 — Cross-tracker project overlap: shared registry + hierarchy mirror**
+  (05 Aug 2026, owner request in conversation: *"i need to discuss with you on
+  how projects can overlap across both trackers (e.g. the existing projects in
+  safety tracker should also be reflected in the projects tracker) … safety
+  tracker is more from a SMS perspective (oversight and management) and projects
+  tracker is for managing the entire project cycle."*). Design agreed with the
+  owner across a Q&A pass; **not yet approved to build**.
+
+  **Findings that ground this (verified against live Supabase data, not assumed):**
+  - The two apps never stopped sharing a data model. Project records in both
+    carry the *identical* 13 fields; the `MILESTONES` constant is byte-identical
+    in both files; even the demo seed uses the same hardcoded IDs
+    (`p_new_northern_runway`). The 2026-07-19 split forked the UI, not the model.
+  - **Project IDs already match.** All 8 projects in `projects.team_state` exist
+    in the Safety Tracker's `public.team_state` under byte-identical IDs. There
+    is no projects-tracker-only record. No matching/fuzzy-join logic is needed —
+    the join key already exists and is stable.
+  - Safety is the de-facto master: 16 projects vs 8, last edits 04 Aug vs 21 Jul.
+    This tracker's cloud row is effectively a frozen snapshot from the split
+    date — its records even carry `keyDates` and `statusUpdates`, fields this app
+    has **zero** code to read or write.
+  - Drift has already started: names differ on 2 of 8 (`Areas 1, 2, 3, 4 &
+    Airside Central` vs `Areas 1-4,AC`; `PA Apron Phase 0 Design` vs
+    `… Phase 0 - Design`), `stageDocs` on 6 of 8, `mocs` on 2 of 8.
+  - The parent/sub-project linkage is **already present in this app's own
+    records** — all 8 carry `mocs[0].parentMocId` and `isAddendum` intact. This
+    app simply has no code that reads them. So the hierarchy mirror is a
+    UI/logic build, not a data migration.
+  - Tombstones are clean (`demo_ksia_1`, `p_1784814970435`, both deleted 27 Jul;
+    neither is in this tracker), so a 16-project backfill is safe.
+
+  **Approach — a shared registry, deliberately not a blob**, so both apps can
+  write it without fighting over each other's `team_state` row:
+  ```sql
+  create schema shared;
+  create table shared.project_registry (
+    id          text primary key,   -- 'p_1784632308655' — already common to both
+    name        text not null,
+    program     text,               -- effective program (inherited for sub-projects)
+    parent_id   text references shared.project_registry(id),  -- null = top-level
+    archived    boolean not null default false,
+    origin_app  text not null,      -- 'safety' | 'projects'
+    updated_at  timestamptz not null default now()
+  );
+  ```
+  `parent_id` is a **project** id, not a MOC id — the deliberate decoupling. The
+  Safety Tracker derives it from its existing `mocParentProject()`; this app
+  consumes it directly and never has to understand what a MOC is in order to
+  nest a sub-project. MOCs stay a Safety concept, matching the SMS-vs-delivery
+  split. Reconcile on sync: registry row not held locally → create a local stub;
+  local project not in registry → insert it; `archived` → hide locally.
+
+  **Owner decisions locked in this pass:**
+  1. Safety is master of the roster. All 16 projects come across, and creation
+     in *either* app reflects into the other.
+  2. Mirror the full three-level hierarchy — **program → project →
+     sub-project/addendum** — exactly as the Safety Tracker has it, rather than
+     flattening or hiding sub-projects. (Supersedes the earlier idea of an
+     `in_projects` visibility flag that would hide addenda.)
+  3. A project can **not** legitimately exist with no MOC — the two current
+     no-MOC records are projects whose MOC is *in planning*. That's a state, not
+     a category; a project created here lands in Safety as MOC-in-planning.
+  4. Renames are bidirectional (this app can rename too, and it propagates back);
+     last-write-wins, Safety wins ties.
+  5. Delete in either app archives in both.
+  6. Observations stay **separate** — safety observations in the Safety Tracker,
+     ops/engineering observations here. Phase 1 does not touch `stageDocs` at
+     all, which keeps it clear of the `stageDocs` data-loss gotcha
+     (`docs/ARCHITECTURE.md`).
+  7. **Rollup semantics (note: deliberately differs from the Safety Tracker,
+     which rolls up everywhere — do not "fix" this into consistency):**
+     a sub-project **scores independently** as its own unit in the KPI engine,
+     but **folds into the parent's bar** in the schedule and executive report.
+
+  **Scope in this repo (the larger of the two sides).** This app only understands
+  `parentGroup` (a flat program string) — there is no sub-project concept
+  anywhere in it. Needs: a `parentProjectId` field on the project record; the
+  four hierarchy helpers ported from the Safety Tracker (`isAddendumProj`,
+  `mocParentProject`, `effectiveProgram`, `addendaOf`); program inheritance
+  (without it, *KSIA Enabling Works 2 – Addendum 1* renders orphaned — it has no
+  program set in either app and relies on inheriting its parent's); three-level
+  nesting in the sidebar, schedule, and executive report; and the KPI/report
+  split from decision 7.
+
+  **Risk / process notes.** Touches KPI scoring and adds a hierarchy adjacent to
+  `stageDocs` — squarely in "spawn an independent review before shipping"
+  territory per `CLAUDE.md`. Likely a major bump (data-model change). Two
+  implementation gotchas already identified: (a) the Safety Tracker merges cloud
+  data *per project*, so a delete here must also write a Safety tombstone
+  (`aimo_deleted_projects`) or the next merge resurrects the record; (b) the
+  first reconciliation must be one-way (Safety → Projects), because this app's
+  row is a stale 21 Jul snapshot and a symmetric merge would push older names
+  back over newer ones. Proposed as a phased build — registry + sync first,
+  hierarchy second — not one drop. Paired item: **P36** in the Safety Tracker
+  repo.
 - **P16 — Design/UI/UX parity with the Safety Tracker sibling** (05 Aug 2026,
   owner request: *"review the design, UI and UX of the safety tracker and see
   what changes need to be made to the Projects tracker so that they are

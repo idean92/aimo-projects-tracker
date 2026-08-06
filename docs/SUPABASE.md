@@ -70,6 +70,68 @@ grant select, insert, update on projects.team_state to authenticated;
   RLS. Verified live: `has_schema_privilege('authenticated','projects','USAGE')`
   now returns `true`, and grants show up in `information_schema.role_table_grants`.
 
+## Shared table — `public.project_registry` (added 06 Aug 2026, v4.0 / Safety V6.0)
+The cross-tracker project roster (P16 here, P36 in the sibling repo). One row per
+project, **shared by both apps** — unlike `projects.team_state` (this app's blob) and
+`public.team_state` (the sibling's blob), which stay separate.
+
+```sql
+create table public.project_registry (
+  id          text primary key,   -- 'p_1784632308655' — the id both apps already share
+  name        text not null,
+  program     text,               -- effective program (inherited for sub-projects)
+  parent_id   text,               -- parent PROJECT id; null = top-level
+  archived    boolean not null default false,
+  origin_app  text not null default 'safety' check (origin_app in ('safety','projects')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),   -- server-set via trigger
+  updated_by  uuid references auth.users(id)
+);
+```
+Migrations: `create_project_registry`, `project_registry_revoke_truncate`,
+`project_registry_harden_id_and_audit`, `projects_team_state_viewer_restrictions`.
+
+**Added by the pre-deploy review (06 Aug 2026):**
+- `check (id ~ '^[A-Za-z0-9_-]{1,64}$')` — a registry id becomes a *local project id* in
+  both apps, and project ids are interpolated into `onclick`/`id`/`<option>` attributes.
+  Without this, one INSERT was stored XSS in both apps. Both clients also reject
+  malformed ids on ingest; this is the server-side backstop, not the only line.
+- `check` length caps on `name` / `program`.
+- `updated_by` is now stamped **server-side** from `auth.uid()` in the BEFORE
+  INSERT-OR-UPDATE trigger. It was declared but never populated by either client, so
+  every row was unattributable; setting it server-side also means a client can't forge it.
+- **`projects.team_state` gained viewer-cannot-write policies.** It previously had
+  `using (true)` / `with check (true)` for every authenticated user, and AIMO Tracker has
+  no viewer concept in its UI — so an account marked read-only for safety data could
+  rewrite the shared roster here, and the next editor's reconcile would publish that to
+  the registry, deleting the matching Safety Tracker projects. ⚠️ This policy change is
+  **live immediately**, independent of any app deploy: accounts with
+  `app_metadata.role = 'viewer'` can no longer write to `projects.team_state`. Editors are
+  unaffected (the predicate defaults to `editor` when the claim is absent).
+
+Deliberate choices, each with a reason:
+- **It lives in `public`, not a new `shared` schema.** A new schema would need the same
+  manual Dashboard → Settings → API step the `projects` schema needed, and would have
+  shipped dead until someone clicked it. `public` is already exposed.
+- **Grants are applied explicitly** (`grant select, insert, update … to authenticated`).
+  RLS alone is not enough — that's exactly what was missing on `projects.team_state` and
+  would have 403'd every query.
+- **`parent_id` is not a foreign key.** Clients batch-upsert rows in arbitrary order; a
+  dangling parent is harmless (rendered top-level), whereas an FK violation would fail
+  the whole batch and break roster sync outright.
+- **No DELETE policy** — rows archive (`archived = true`), never delete, so a deletion in
+  one app can always propagate to the other instead of just vanishing.
+- **RLS mirrors `viewers_cannot_*_team_state`** — viewers read, non-viewers write, keyed
+  off the same admin-set `app_metadata.role` claim.
+- **`TRUNCATE` was revoked** from `authenticated`/`anon`. It bypasses RLS, and Supabase's
+  default privileges on `public` grant it to every new table. ⚠️ **`public.team_state` and
+  `public.app_state` still carry that same default grant** — not changed here (out of
+  scope for this work), and not currently reachable since PostgREST exposes no TRUNCATE
+  verb, but worth closing separately.
+
+Only the *roster* is shared. `stageDocs`, `milestones`, `keyDates`, `mocs`, KPIs and
+observations are **not** in this table and stay app-owned.
+
 ## Exposed schemas
 Confirmed working — a signed-out `curl` against `/rest/v1/team_state` with
 `Accept-Profile: projects` returns `42501 permission denied for schema projects`
