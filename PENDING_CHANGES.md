@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P18 | Collapse to one entry per real project; own the roster; MOCs feed the design/commissioning milestones (paired with Safety P37) | 🆕 Consolidated 06 Aug 2026 — design agreed with the owner in conversation, **not yet approved to build** |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
@@ -32,6 +33,92 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
+- **P18 — Collapse to one entry per real project; own the roster; MOCs feed the
+  design/commissioning milestones** (06 Aug 2026, owner review of the shipped
+  P17/P36 sync: *"Safety tracker tracks MOCs … a project can have several MOCs
+  … Projects should own all"*). Design agreed with the owner across a Q&A pass;
+  **not yet approved to build**. Paired with Safety **P37**, which covers the
+  MOC-side changes.
+
+  **Root cause.** P17 shipped a one-to-one mapping — one Safety project becomes
+  one project here. The real relationship is many-to-one: a project runs through
+  several MOCs (a Design one, a Commissioning one, plus addenda under each). So
+  this app currently holds 17 entries where ~12 projects exist, and the design
+  dates sit on a different entry from the commissioning dates, meaning **no
+  single entry can ever render the full delivery cycle**.
+
+  **The structural proof, from this app's own `MILESTONES` constant:**
+
+  ```
+   1  Design Review
+   2  GACA Package Review
+   3  GACA Design Submission            ←── Design MOC
+   4  GACA Design Acceptance            ←── Design MOC
+   5  Project Construction                   ← no MOC (296 KB of docs live here)
+   6  GACA Comm. Pkg Review
+   7  GACA Commissioning Submission     ←── Commissioning MOC
+   8  GACA Commissioning Acceptance     ←── Commissioning MOC
+   9  Trials
+  10  Project Completion
+  ```
+
+  Construction, Trials and Completion sit *between and after* the two MOC-fed
+  pairs. Split the project into two records and stages 5, 9 and 10 belong to
+  neither. The 10-stage schedule was designed from the start for one project
+  spanning design → commissioning; the P17 sync is what broke that.
+
+  **Findings that ground this (verified against live Supabase data, 06 Aug 2026):**
+  - **17 registry rows → 12 projects** (11 real + a `TEST1` row to clear). Only
+    one is a genuine merge: `PA Apron Phase 0 - Commissioning` folds into
+    `PA Apron Phase 0 - Design`, renamed to `PA Apron Phase 0`. The other four
+    that disappear are addenda already nested via `parentProjectId`, dropping
+    one level to become addendum MOCs in the Safety Tracker.
+  - **The merge costs nothing on this side.** The Commissioning entry is an
+    empty shell the registry ingest created at 08:58 on 06 Aug: `milestones: {}`,
+    no `stageDocs`, every native field blank.
+  - **`stageDocs` is keyed by milestone, not by MOC** — so documents stay
+    project-level. The 296 KB on PA Apron Phase 0 sits under `project_execution`
+    (Construction, which has no MOC), and `gaca_commissioning_submission` carries
+    a 9-document register (test procedures, as-builts, O&M manuals) that belongs
+    to project delivery, not to a change request. An earlier per-MOC proposal was
+    withdrawn on this evidence. Consequence: the merge is purely additive — no
+    documents combine, no schedules reconcile.
+  - **Six of the 17 entries are the wrong shape.** `PA Apron Phase 0 - Design`,
+    `KSIA Enabling Works`, its two addenda, `NCRD Demolition` and `New Central
+    Runway D&C` are *Safety-shaped* records (carrying `mocs`, `statusUpdates`,
+    `krei`, `aipsDates`) seeded before the registry existed, and they lack the
+    native fields entirely — no `parentProjectId`, `category`, `contractor`,
+    `gacaRef`, `packageRef` or `scope`. The collapse is the natural moment to
+    normalise them.
+  - The P17 hierarchy **is** working — all four addenda carry the correct
+    `parentProjectId`, and `parentGroup` is populated on 16 of 17.
+
+  **Proposed changes here:**
+  1. **This app becomes master of the project roster** (owner decision). Inverts
+     P17's direction, where the Safety Tracker derived the hierarchy and
+     published it outward. The Safety Tracker owns MOC records that attach to a
+     project.
+  2. **Collapse the roster to one entry per real project** (see the migration in
+     Safety P37 — the deletions propagate here via the existing tombstone path).
+  3. **Consume the MOC stage tag** so a Design MOC feeds milestones 3 and 4 and a
+     Commissioning MOC feeds 7 and 8, with `executionStart` taking the earliest
+     across a project's MOCs and `actualEnd` the latest. `received` stays
+     MOC-level (it is per-change-request); `expectedEnd` stays owned here.
+  4. **Normalise the six Safety-shaped records** onto the native shape.
+
+  **Open question for the owner.** If addenda stop being projects here, this
+  app's hierarchy becomes two levels (Program → Project) and P17 Phase 2's
+  three-level nesting goes unused — *unless* this app should also display each
+  project's MOCs read-only, pulled from the registry. That would reuse the
+  nesting UI and make it visible which MOC produced which milestone date.
+  Undecided; it determines whether Phase 2's work is repurposed or retired.
+
+  **Risk / process notes.** Touches the registry sync direction, project
+  merge/deletion, and the milestone feed → an Opus pre-deploy review is required
+  per `CLAUDE.md`. `stageDocs` is *read* during the collapse but not
+  restructured, which keeps this clear of the mutation gotcha in
+  `docs/ARCHITECTURE.md`. Nothing here is approved to implement.
+
 - **P17 — Cross-tracker project overlap: shared registry + hierarchy mirror**
   (05 Aug 2026, owner request in conversation: *"i need to discuss with you on
   how projects can overlap across both trackers (e.g. the existing projects in
