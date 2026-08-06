@@ -6,13 +6,16 @@ master-planning) team at King Salman International Airport (KSIA). It tracks MOC
 (Management of Change) projects, governance actions, and KPIs through their
 approval/design/execution lifecycle.
 
-The app is a single self-contained file, `aimo-tracker.html` (~13,400 lines: markup +
+The app is a single self-contained file, `aimo-tracker.html` (~14,800 lines: markup +
 CSS + vanilla JS all inline, no build step, no framework, no npm runtime dependencies).
-Data currently lives entirely in the browser via `localStorage`
-(`aimo_projects` / `aimo_governance` / `aimo_kpi_settings`); the only backup mechanism
-is a manual session export/import (`downloadSession()` / `loadSessionFile()`). A
-Supabase project exists for future cloud sync (see `docs/SUPABASE.md`) but the app has
-no code yet that talks to it — nothing has changed for end users until that's built.
+Local state lives in the browser via `localStorage` (`aimo_projects` /
+`aimo_governance` / `aimo_kpi_settings`), with a manual session export/import
+(`downloadSession()` / `loadSessionFile()`) as the offline backup path. **Cloud sync is
+built and live** — sign-in is mandatory (P14/v3.0) and the whole blob syncs to
+`projects.team_state` in the shared Supabase project (P7/v2.0), with
+`shared.project_registry` added in P17/v4.0–4.2 for the cross-tracker roster. See
+`docs/SUPABASE.md`. *(This paragraph previously said Supabase was unbuilt and data was
+browser-only — false since v2.0; corrected 06 Aug 2026.)*
 
 See `docs/ARCHITECTURE.md` for the detailed architecture cheat-sheet, the data-model
 gotchas, and how this project relates to its sibling, AIMO Safety Tracker.

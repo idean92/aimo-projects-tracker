@@ -7,7 +7,10 @@ shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 - **Pre-deploy review fixes for P17** (three independent Opus reviewers — sync/
   data-loss, hierarchy/KPI, and security — run on the owner's instruction before
   deploying v4.0/v4.1). 22 findings; all fixed. Ships with v4.0 and v4.1 as one
-  feature. **Still not deployed** — `public/index.html` untouched.
+  feature. **Deployed** on the owner's explicit "ship it" — `public/index.html`
+  is byte-identical to `aimo-tracker.html` at v4.2. *(This line previously read
+  "Still not deployed"; corrected 06 Aug 2026 — it was written before the deploy
+  commit and never updated.)*
 
   **Critical**
   - **Stored XSS via registry-supplied project ids.** Project ids are

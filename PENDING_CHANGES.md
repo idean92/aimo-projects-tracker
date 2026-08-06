@@ -6,10 +6,11 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | 🆕 Triaged 06 Aug 2026 — **awaiting approval to implement**; the "who" half needs a Supabase migration, see below |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
-| P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | 🔧 Built, QA'd, independently reviewed (5 findings fixed), version bumped (v2.1) — awaiting explicit "ship it" |
-| P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | 🔧 Built, QA'd, independently reviewed (5 findings fixed, 2 of them HIGH), version bumped (v3.0) — awaiting explicit "ship it" |
+| P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | ✅ Shipped (v2.1) — carried live by the v3.1/v3.2 deploy. *(Status corrected 06 Aug 2026; the "awaiting ship it" text below is stale.)* |
+| P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | ✅ Shipped (v3.0) — carried live by the v3.1/v3.2 deploy; the sign-in gate is present in the deployed `public/index.html`. *(Status corrected 06 Aug 2026.)* |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
 | P12 | Audit batch 4 — schema + governance (H3, M8, M9) | ✅ Done (H3 shipped in v2.0; M8/M9 done in Batch D) |
 | P11 | Audit batch 3 — KPI correctness (H4, M5, M6, M7, L6, L7, L9, L10) | ✅ Done (H4 shipped in v2.0; M5–M10/L6/L7/L9/L10 done in Batch D) |
@@ -32,6 +33,55 @@ _(none yet)_
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
+- **P18 — Cloud Sync: last-synced date + who last saved** (06 Aug 2026, in-app
+  feedback via the Notion Feedback Inbox, submitted 05 Aug 2026 against v3.0 ·
+  Homepage: *"in the 'Cloud Sync', the last sync should also display the date (in
+  addition to the time) and if possible - who was last user?"*). Consolidated only —
+  **nothing implemented**. Two halves with very different cost:
+
+  **(a) The date — small, self-contained.** `setSyncStatus('synced', 'Last synced ' +
+  new Date(data.updated_at).toLocaleTimeString())` appears at three push sites
+  (~lines 3010, 3039, 3122) and drops the date entirely. Replace all three with one
+  `_syncStamp(ts)` helper using `toLocaleString()` (or an explicit
+  `d MMM · HH:mm`). While in there: **`sbPullNow()` (~line 3061) never sets the detail
+  at all** — so straight after sign-in the modal's Status line reads `—` until the
+  first push happens. Same bug family, fix in the same item: it already fetches
+  `updated_at`, it just never stamps it.
+
+  **(b) The "who" — needs a schema change.** `projects.team_state.updated_by` is a
+  `uuid` (verified against live Supabase), it is written on every push
+  (`updated_by: sbUser.id`) and **read nowhere** — this would be its first consumer.
+  The client cannot turn that uuid into an email: Supabase's `auth.users` is not
+  client-readable by design. Three ways out:
+  1. **Add `updated_by_email text` to `projects.team_state`** — write `sbUser.email`
+     alongside `updated_by`, add it to the `select()` on pull. No new table, no new
+     RLS surface, ~6 lines of app code + a one-line migration. Cost: an email is
+     duplicated into an app table and visible to every signed-in team member (which
+     is the point of the feature, but it *is* new PII in a data row).
+  2. A `projects.profiles` table (id → email) populated on sign-in, joined on read.
+     Cleaner normalisation, more moving parts, more RLS to get right.
+  3. A `SECURITY DEFINER` RPC mapping uuid → email. Least duplication; a function
+     that reaches into `auth.users` needs careful scoping and is the easiest of the
+     three to get wrong.
+
+  **Recommendation: option 1**, given an invite-only team of known people.
+
+  **Risk / process notes.** (a) alone is a trivial display fix. (b) touches Supabase
+  reads/writes → `CLAUDE.md` requires a review subagent before deploying. The
+  migration must be scoped to the `projects` schema: this Supabase project is
+  **shared** with the Safety Tracker, whose live `public.team_state` /
+  `public.app_state` must not be touched (same discipline as P6, and P36/P17 have
+  since added `shared.project_registry` to the same project). Existing rows have no
+  email until the first push after deploy backfills one — the UI must render `—`
+  rather than `undefined` for that window. UI target: the Cloud Sync modal's
+  "Status" line (`#caSyncDetail`, ~line 14810), either as an extra "Last updated by"
+  row or folded inline: `Last synced 6 Aug 2026, 14:32 · by name@example.com`.
+
+  **Separate, not proposed here:** the Safety Tracker moved this whole surface into a
+  header email + popover in its V5.4 (P34); this app still uses the
+  `openCloudAuthModal()` modal. If the owner wants parity that's its own item — and
+  note P37 in the sibling repo is a live bug *in that popover*, so it should be fixed
+  there before anything is ported across.
 - **P17 — Cross-tracker project overlap: shared registry + hierarchy mirror**
   (05 Aug 2026, owner request in conversation: *"i need to discuss with you on
   how projects can overlap across both trackers (e.g. the existing projects in
