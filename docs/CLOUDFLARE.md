@@ -111,3 +111,5 @@ Explicitly skipped for now (per your direction) — AIMO Tracker has no photo-ca
 feature today, unlike the sibling's field-photo findings. Revisit if/when a feature
 needs it; see the sibling's `docs/reference/safety-tracker-deploy-log.md` (cloud-v4)
 for the pattern it used (R2 bucket + dedicated photo Worker).
+
+<!-- deploy-trigger probe: docs-only, no app change. See CLAUDE.md Deployment. -->
