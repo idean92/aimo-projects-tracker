@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | 🐛 Logged (06 Aug 2026, owner screenshot) — awaiting go |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
@@ -25,7 +26,27 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 | P1 | In-app feedback button + Cloudflare/Notion endpoint | ✅ Shipped and fully working (v1.1) |
 
 ## 🐛 Bugs
-_(none yet)_
+- **P19 — Broken Leaflet/Leaflet.Draw icons (Project Scope satellite map)**
+  (06 Aug 2026, owner screenshot of the live app: the draw toolbar under
+  "PROJECT SCOPE (SATELLITE MAP)" shows 2–3 blank white buttons with no
+  icons, below the +/− zoom controls). **Root cause diagnosed, not yet
+  fixed.** This app inlines the Leaflet + Leaflet.Draw CSS directly into
+  `aimo-tracker.html` (per `docs/ARCHITECTURE.md`) rather than loading it
+  from a CDN. Whatever process did that inlining left the icon images as
+  broken placeholder references instead of real image data — e.g.
+  `background-image:url("2e3acecd-edb2-4ff3-997b-ebfdeeab55c7")` is a UUID,
+  not a valid URL or data URI, so it 404s silently and the button renders
+  with just its box styling and no icon. Confirmed **27 such broken
+  references** in the file: 3 in Leaflet's core CSS (the default marker
+  pin/shadow icons — not yet confirmed visibly broken anywhere in the app,
+  since this app may not render default markers) and 24 in the
+  Leaflet.Draw plugin's CSS (draw/edit/delete toolbar icons, normal +
+  retina variants) — the latter is what's visibly broken in the
+  screenshot. Predates this session's work; not something the recent
+  Batch A–D / P14 changes introduced. Fix requires sourcing the real
+  Leaflet 1.x / Leaflet.Draw 1.x icon assets and re-embedding them as
+  base64 data URIs in place of all 27 broken refs — not a one-line fix,
+  but self-contained (CSS/asset-only, no app logic touched).
 
 ## ✨ Improvements
 - **P2 (follow-up, optional)** — ~20-30 hardcoded RAG-status/comment-class/gantt
