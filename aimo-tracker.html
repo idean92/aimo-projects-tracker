@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>KSIA Projects Tracker</title>
 
 <style>/* required styles */
@@ -1906,6 +1906,50 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
   .p8hd .p8hd-right{ flex-wrap:wrap; justify-content:flex-end; }
   .p8-statgrid{ grid-template-columns:repeat(3,1fr)!important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   P16 PHASE 2 — MOBILE RESPONSIVE LAYER. Ported from the Safety Tracker
+   sibling (same two breakpoints, same shape) — see PENDING_CHANGES.md P16.
+   Entirely additive inside these two media queries; nothing above this
+   block is touched. Hamburger/backdrop markup + toggleNav() are next to the
+   header/app-shell markup and the EVENTS & INIT script section respectively.
+   ══════════════════════════════════════════════════════════════════════════ */
+.mobile-nav-toggle{display:none;}
+.mobile-nav-backdrop{display:none;}
+@media (max-width:820px){
+  .mobile-nav-toggle{display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0 2px 0 8px;flex-shrink:0;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);border-radius:10px;color:#fff;font-size:20px;line-height:1;cursor:pointer;}
+  .header-brand{flex:1;min-width:0;}
+  .sidebar{position:fixed;top:0;left:0;height:100vh;height:100dvh;width:min(86vw,320px);z-index:1200;transform:translateX(-100%);transition:transform .25s ease;box-shadow:0 0 44px rgba(0,0,0,.4);}
+  body.nav-open .sidebar{transform:none;}
+  body.nav-open .mobile-nav-backdrop{display:block;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.5);}
+  .main-tab-bar{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;}
+  .main-tab-bar::-webkit-scrollbar{display:none;}
+  .main-tab-btn{flex-shrink:0;white-space:nowrap;}
+}
+@supports (padding:max(0px)) {
+  .header{padding-right:max(20px,env(safe-area-inset-right));padding-top:env(safe-area-inset-top);height:calc(var(--header-h) + env(safe-area-inset-top));}
+  .modal-ftr{padding-bottom:max(12px,env(safe-area-inset-bottom));}
+  .sidebar{padding-bottom:env(safe-area-inset-bottom);}
+  .fb-fab{bottom:calc(20px + env(safe-area-inset-bottom,0px));}
+}
+@media (max-width:480px){
+  body{font-size:15px;}
+  .brand-text{display:none;}
+  .header-right{gap:6px;}
+  .header-right .btn{font-size:0;gap:0;min-width:44px;min-height:40px;padding:0;justify-content:center;}
+  .header-right .btn svg{width:17px;height:17px;}
+  input,select,textarea,.search-input,.obs-text{min-height:40px;}
+  .btn{min-height:40px;}
+  .sb-filter{min-height:38px;}
+  .sb-project{min-height:44px;}
+  .close-btn{width:40px;height:40px;font-size:18px;}
+  .overlay{padding:0;align-items:stretch;}
+  .overlay .modal{max-width:100%!important;width:100%!important;max-height:100vh!important;max-height:100dvh!important;height:100vh;height:100dvh;border:none;}
+  .modal-hdr{padding:14px 16px;}
+  .modal-body{padding:16px;}
+  .modal-ftr{padding:12px 16px;flex-wrap:wrap;gap:8px;}
+}
+/* ── END P16 PHASE 2 MOBILE RESPONSIVE LAYER ── */
 </style>
 <!-- PptxGenJS 3.12.0 — inlined for offline use -->
 <script>
@@ -1966,6 +2010,7 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
      first paint) so there is no window where Tab+Enter can reach a header/app-shell control
      before revealApp()/JS runs. revealApp() and the verify-mode branch remove this. -->
 <header class="header" inert>
+  <button class="mobile-nav-toggle" onclick="toggleNav()" aria-label="Open menu" title="Menu">&#9776;</button>
   <div class="header-brand">
     <div class="logo">AIMO</div>
     <div class="brand-text">
@@ -1993,6 +2038,7 @@ select,input,textarea,.vp-input,.vp-ctrl-eval-select,.vp-ctrl-remarks,.search-in
     </button>
   </div>
 </header>
+<div class="mobile-nav-backdrop" onclick="toggleNav()" aria-hidden="true"></div>
 
 <!-- APP SHELL -->
 <div class="app-shell" inert>
@@ -12070,8 +12116,27 @@ document.addEventListener('keydown',e=>{
     // their own buttons but not on Escape, unlike every other modal here.
     else if(document.getElementById('wnOverlay')) closeWhatsNew();
     else if(!document.getElementById('settingsOverlay').classList.contains('hidden')) closeSettingsModal();
+    // P16 Phase 2 (mobile layer): Escape also closes the off-canvas drawer.
+    document.body.classList.remove('nav-open');
   }
 });
+// P16 Phase 2 (mobile layer): hamburger toggle for the off-canvas sidebar drawer at ≤820px.
+// Suppressed in verify-mode for free — body.verify-mode already hides .header/.app-shell
+// outright (see the CSS rule near the top of the file), so the toggle button isn't reachable
+// there regardless; the `body` guard below is just defense in depth against a stray call.
+function toggleNav(){
+  const b = document.body;
+  if (b.classList.contains('verify-mode')) return;
+  if (!document.querySelector('.sidebar')) return;
+  b.classList.toggle('nav-open');
+}
+// Picking a project from the drawer closes it — capture-phase so it fires before showDetail()'s
+// own click-target logic.
+document.addEventListener('click', e => {
+  if (document.body.classList.contains('nav-open') && e.target.closest('.sidebar .sb-project')) {
+    document.body.classList.remove('nav-open');
+  }
+}, true);
 const dz=document.getElementById('crsDropzone');
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
 dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
