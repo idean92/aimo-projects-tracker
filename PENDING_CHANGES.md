@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | 🐛 Logged (06 Aug 2026, owner screenshot) — awaiting go |
+| P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | 🔧 Fixed + QA'd (09 Aug 2026) — not yet versioned/deployed |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
 | P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
@@ -26,27 +26,48 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 | P1 | In-app feedback button + Cloudflare/Notion endpoint | ✅ Shipped and fully working (v1.1) |
 
 ## 🐛 Bugs
-- **P19 — Broken Leaflet/Leaflet.Draw icons (Project Scope satellite map)**
-  (06 Aug 2026, owner screenshot of the live app: the draw toolbar under
-  "PROJECT SCOPE (SATELLITE MAP)" shows 2–3 blank white buttons with no
-  icons, below the +/− zoom controls). **Root cause diagnosed, not yet
-  fixed.** This app inlines the Leaflet + Leaflet.Draw CSS directly into
-  `aimo-tracker.html` (per `docs/ARCHITECTURE.md`) rather than loading it
-  from a CDN. Whatever process did that inlining left the icon images as
-  broken placeholder references instead of real image data — e.g.
-  `background-image:url("2e3acecd-edb2-4ff3-997b-ebfdeeab55c7")` is a UUID,
-  not a valid URL or data URI, so it 404s silently and the button renders
-  with just its box styling and no icon. Confirmed **27 such broken
-  references** in the file: 3 in Leaflet's core CSS (the default marker
-  pin/shadow icons — not yet confirmed visibly broken anywhere in the app,
-  since this app may not render default markers) and 24 in the
-  Leaflet.Draw plugin's CSS (draw/edit/delete toolbar icons, normal +
-  retina variants) — the latter is what's visibly broken in the
-  screenshot. Predates this session's work; not something the recent
-  Batch A–D / P14 changes introduced. Fix requires sourcing the real
-  Leaflet 1.x / Leaflet.Draw 1.x icon assets and re-embedding them as
-  base64 data URIs in place of all 27 broken refs — not a one-line fix,
-  but self-contained (CSS/asset-only, no app logic touched).
+- **P19 — Broken Leaflet/Leaflet.Draw icons (Project Scope satellite map) —
+  fixed and QA'd** (09 Aug 2026, owner screenshot of the live app: the draw
+  toolbar under "PROJECT SCOPE (SATELLITE MAP)" showed 2–3 blank white
+  buttons with no icons, below the +/− zoom controls). Two separate bugs,
+  both needed to fully fix it:
+  - **Broken image references.** This app inlines the Leaflet 1.9.4 +
+    Leaflet.Draw 1.0.4 CSS directly rather than loading it from a CDN.
+    Whatever process did that inlining left the icon images as broken
+    placeholder UUIDs instead of real image data — e.g.
+    `background-image:url("2e3acecd-edb2-4ff3-997b-ebfdeeab55c7")`. *(Correction
+    to this item's original diagnosis: it claimed 27 such broken references —
+    3 core + 24 draw. Re-verified during implementation: it was actually
+    exactly **7 occurrences, 6 distinct files** — layers.png/-2x
+    (layers-control toggle), marker-icon.png (unused path-guessing heuristic),
+    and spritesheet.png/-2x/.svg (the draw toolbar, which repeats the SVG
+    fallback reference twice via a standard retina-detection CSS pattern).
+    The other ~20 broken UUIDs the original count picked up are a completely
+    separate, unrelated issue — this app's "Barlow" Google Font `@font-face`
+    declarations, broken the same way. Not fixed here — flagged below as a
+    new, separately-scoped finding.)* Fixed by sourcing the real assets from
+    the matching npm package versions and replacing all 7 occurrences with
+    base64 data URIs.
+  - **A pre-existing app-specific CSS bug, found during implementation, that
+    would have kept the icons blank even with the broken UUIDs fixed:**
+    `.leaflet-bar a{background:#fff!important;...}` used the `background`
+    shorthand, which resets `background-image` (and position/repeat/size) to
+    their initial values on every match — including the draw toolbar's `<a>`
+    elements, which also carry the `leaflet-bar` class. Changed to
+    `background-color`, which only touches the fill and leaves the
+    icon-image sub-properties alone.
+  - QA: headless Playwright confirmed the draw-toolbar buttons resolve a
+    real computed `background-image` (was `none`), plus a visual screenshot
+    confirming the polygon/edit/delete icons render correctly. Full existing
+    regression suite re-run — zero regressions.
+  - **Not yet versioned or deployed** — built and QA'd on the working copy
+    only, awaiting a version bump + explicit "ship it" per `CLAUDE.md`.
+  - **New finding, not yet logged as its own item, flagging here**: the
+    "Barlow" Google Font is broken the same way (~20 `@font-face` `src:
+    url("UUID")` references, lines ~755–935+) — the site has likely been
+    silently falling back to a system font everywhere `font-family: 'Barlow'`
+    is used. Separate root cause, separate fix, deliberately not bundled into
+    this one to keep P19's scope to what was actually reported/approved.
 
 ## ✨ Improvements
 - **P2 (follow-up, optional)** — ~20-30 hardcoded RAG-status/comment-class/gantt
