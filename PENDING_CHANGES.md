@@ -6,10 +6,10 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | 🔧 Fixed + QA'd (09 Aug 2026) — not yet versioned/deployed |
+| P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | ✅ **Shipped (v4.4, 09 Aug 2026)** on the owner's explicit "begin deployment" |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
-| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ Shipped (v3.1 + v3.2) — Phases 1, 3 and Phase 4 items 1–3. Phase 2 (mobile) not started; Phase 4 item 4 out of scope |
+| P16 | Design/UI/UX parity with the Safety Tracker sibling (owner review request) | ✅ **Shipped (v3.1 + v3.2 + v4.4, 09 Aug 2026)** — Phases 1, 3, 4 items 1–3, and now Phase 2 (mobile). Phase 4 item 4 out of scope |
 | P15 | Batch A/B/D housekeeping + audit remainders (owner's "go ahead") | ✅ Shipped (v2.1) — carried live by the v3.1/v3.2 deploy. *(Status corrected 06 Aug 2026; the "awaiting ship it" text below is stale.)* |
 | P14 | Retire local-only usage — mandatory sign-in gate, remove Session-modal auto-open (owner feedback) | ✅ Shipped (v3.0) — carried live by the v3.1/v3.2 deploy; the sign-in gate is present in the deployed `public/index.html`. *(Status corrected 06 Aug 2026.)* |
 | P13 | Audit batch 5 — hardening & hygiene (M1, M4, M12, L2–L5, L11–L13) | 🔧 M1/M4/L2–L5/L11/L13 done (Batch D); M12 excluded — needs separate owner approval (`main`-branch infra change) |
@@ -60,8 +60,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
     real computed `background-image` (was `none`), plus a visual screenshot
     confirming the polygon/edit/delete icons render correctly. Full existing
     regression suite re-run — zero regressions.
-  - **Not yet versioned or deployed** — built and QA'd on the working copy
-    only, awaiting a version bump + explicit "ship it" per `CLAUDE.md`.
+  - **Shipped (v4.4, 09 Aug 2026)** on the owner's explicit "begin deployment".
   - **New finding, not yet logged as its own item, flagging here**: the
     "Barlow" Google Font is broken the same way (~20 `@font-face` `src:
     url("UUID")` references, lines ~755–935+) — the site has likely been
@@ -285,9 +284,22 @@ process in `CLAUDE.md`. Newest items at the top of each section.
       notes** (`const CHANGELOG` in `aimo-tracker.html`). Both it and
       `CHANGELOG.md` must be updated on every release — added to `CLAUDE.md`
       § Versioning rules.
-  - **Phase 2 (mobile layer) not started** — still the largest remaining UX gap:
-    this app has no phone support at all (no drawer nav, no full-screen modals,
-    no safe-area handling).
+  - **Phase 2 (mobile layer) — implemented, reviewed, and shipped (v4.4,
+    09 Aug 2026)** on the owner's explicit "begin deployment", after first
+    discussing and finalizing the plan in conversation. Ported from the
+    Safety Tracker sibling's own mobile layer (researched in detail first —
+    breakpoints, drawer markup/CSS/JS, full-screen modal treatment, safe-area
+    handling — rather than building from scratch): off-canvas drawer nav at
+    820px, icon-only header + full-screen modals + safe-area insets at 480px.
+    The one thing the sibling never had to test (it has no equivalent):
+    the mandatory sign-in gate going full-screen on phone — verified
+    directly, works correctly. **Independent review** (required — touches
+    every modal in the app) found 2 HIGH-severity bugs (a z-index conflict
+    that hid modals opened from inside the drawer; the guided tour
+    targeting the closed drawer's off-screen contents) plus 5 smaller ones,
+    all fixed — see `CHANGELOG.md` v4.4 for the full list. Explicitly not
+    ported: the Observations-table-to-cards treatment and the second-FAB
+    offset (Safety-specific, no equivalent here).
 
   **✅ Shipped 05 Aug 2026** on the owner's explicit *"merge into
   claude/review-pending-context-jbjnrg and ship it"* — `aimo-tracker.html`

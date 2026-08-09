@@ -2536,8 +2536,8 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v4.3';
-const APP_DATE     = '06 Aug 2026';
+const APP_VERSION  = 'v4.4';
+const APP_DATE     = '09 Aug 2026';
 
 // ── What's-new changelog (P16) ──────────────────────────────────────────────
 // Plain-language highlights shown once after each update (see showWhatsNew()).
@@ -2546,6 +2546,10 @@ const APP_DATE     = '06 Aug 2026';
 // To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
 // the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
 const CHANGELOG = [
+  { v:'v4.4', date:'09 Aug 2026', items:[
+    {icon:'📱', title:'Works on your phone now.', text:'The app has a real mobile layout — a slide-out menu for the project list, full-screen forms, and bigger tap targets, instead of a squeezed-down desktop view.'},
+    {icon:'🗺️', title:'Fixed the map draw toolbar.', text:'The polygon/edit/delete buttons on the Project Scope satellite map were showing as blank boxes. They now show their icons correctly.'},
+  ]},
   { v:'v4.3', date:'06 Aug 2026', items:[
     {icon:'☁️', title:'Cloud Sync now says when, and who.', text:'The Cloud Sync panel showed only a time, which told you nothing once the last save wasn\'t today. It now shows the full date and time, and the email of whoever saved last, so you can see at a glance whether you are looking at your own change or a teammate\'s.'},
   ]},

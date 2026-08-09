@@ -3,6 +3,69 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v4.4 — 09 Aug 2026
+- **P19 — Fixed broken Leaflet/Leaflet.Draw icons on the Project Scope
+  satellite map.** From an owner screenshot (06 Aug 2026): the draw
+  toolbar's polygon/edit/delete buttons rendered as blank white boxes.
+  Two separate bugs, both required:
+  - The inlined Leaflet 1.9.4 + Leaflet.Draw 1.0.4 CSS had 7
+    `background-image` `url()` references pointing at broken UUID
+    placeholders instead of real image data (an artifact of however this
+    app's CSS got inlined) — sourced the real assets from the matching npm
+    package versions and replaced all 7 (6 distinct files: layers.png/-2x,
+    marker-icon.png, spritesheet.png/-2x/.svg) with base64 data URIs.
+    *(Correction: this was originally diagnosed as 27 broken references.
+    Re-verified during implementation — it was 7. The other ~20 are a
+    separate, unrelated issue: this app's "Barlow" Google Font is broken
+    the same way. Not fixed here, logged separately.)*
+  - `.leaflet-bar a{background:#fff!important;...}` used the `background`
+    shorthand, which resets `background-image` to `none` on every match —
+    including the draw toolbar's own `<a>` elements, which also carry the
+    `leaflet-bar` class. This alone would have kept the icons blank even
+    with the broken UUIDs fixed. Changed to `background-color`.
+  - QA: headless Playwright confirmed the toolbar buttons resolve a real
+    computed `background-image`, plus a visual screenshot. Full regression
+    suite re-run — zero regressions.
+- **P16 Phase 2 — mobile responsive layer**, ported from the Safety
+  Tracker sibling (same two breakpoints, same shape, adapted to this
+  app's class names). This app previously had zero phone support.
+  - **820px**: the sidebar becomes an off-canvas drawer (hamburger button
+    + backdrop, closes via backdrop click / Escape / picking a project);
+    the main tab bar scrolls horizontally instead of wrapping.
+  - **480px**: icon-only header buttons, 40-44px tap targets, and every
+    modal in the file — all 13 of them, including the mandatory sign-in
+    gate — goes full-screen via overrides on the shared `.overlay`/
+    `.modal` classes they all funnel through.
+  - Safe-area-inset handling (header, modal footers, sidebar, feedback
+    FAB) behind `@supports`, plus the `viewport-fit=cover` viewport-meta
+    addition it depends on.
+  - Explicitly not ported (Safety-specific, no equivalent here): the
+    Observations table→stacked-cards treatment, and the second-FAB
+    stacking offset.
+  - **Independently reviewed before shipping** (required — touches every
+    modal in the app, including the sign-in gate). Found 2 HIGH-severity
+    bugs: the drawer/backdrop's z-index (1200/1100) beat every `.overlay`
+    (600) in the shared stacking context, so a modal opened from inside
+    the drawer (Add Project, What's New) rendered fully hidden behind it;
+    and the guided tour's visibility check didn't account for
+    `transform:translateX(-100%)` still producing a layout box, so 4 of
+    its 6 steps pointed at the closed drawer's off-screen contents on
+    phones. Also found and fixed: checkboxes stretched into a 14×40
+    sliver from a blanket tap-target rule, missing
+    `safe-area-inset-left` handling, a ~1px active-tab-underline clip
+    from `overflow-x:auto`'s spec-mandated effect on `overflow-y`,
+    `nav-open` not clearing on a breakpoint crossing, and full-screen
+    modals keeping their corner radius. All fixed and re-verified with
+    dedicated tests. One LOW finding not fixed (`#verifModal`'s mobile
+    layout) — confirmed dead code, zero callers anywhere in the file.
+  - QA: headless Playwright at 390px phone and 1440px desktop viewports —
+    drawer open/close via all 3 paths, the sign-in gate confirmed
+    full-screen and usable, all 13 modals confirmed full-screen, icon-only
+    header, zero effect outside the two breakpoints. Full existing
+    regression suite re-run throughout — zero regressions.
+- **Shipped 09 Aug 2026** on the owner's explicit "begin deployment" —
+  `aimo-tracker.html` copied to `public/index.html` and pushed.
+
 ## v4.3 — 06 Aug 2026
 - **P18 — Cloud Sync: last-synced date + who last saved.** From in-app feedback
   (05 Aug 2026, v3.0 · Homepage): *"in the 'Cloud Sync', the last sync should also
