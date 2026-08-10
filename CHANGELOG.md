@@ -3,7 +3,7 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
-## v4.5 — 09 Aug 2026
+## v4.5 — 10 Aug 2026
 Pre-ship fix set from **Audit Run 2** (the pre-deploy audit of v4.4 — see the
 "Code Audits — AIMO Projects Tracker" Notion page for the full findings). Six
 fixes, all in the cloud-sync/import safety path plus one CSS line:

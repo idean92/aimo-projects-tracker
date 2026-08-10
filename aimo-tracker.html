@@ -2537,7 +2537,7 @@ const KPI_DEFAULTS = {
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
 const APP_VERSION  = 'v4.5';
-const APP_DATE     = '09 Aug 2026';
+const APP_DATE     = '10 Aug 2026';
 
 // ── What's-new changelog (P16) ──────────────────────────────────────────────
 // Plain-language highlights shown once after each update (see showWhatsNew()).
@@ -2546,7 +2546,7 @@ const APP_DATE     = '09 Aug 2026';
 // To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
 // the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
 const CHANGELOG = [
-  { v:'v4.5', date:'09 Aug 2026', items:[
+  { v:'v4.5', date:'10 Aug 2026', items:[
     {icon:'🛡️', title:'Safer cloud sync.', text:'Fixed rare cases where an edit typed at the exact moment the app refreshed from the cloud could be lost, and where signing back in after a dropped session could quietly overwrite an unsaved change instead of warning you. The app also now refuses to apply corrupted cloud data.'},
     {icon:'🗺️', title:'Map toolbar icons stay visible.', text:'The Project Scope draw buttons showed their icons again as of the last update — but disappeared while hovering over them. Now they stay put.'},
   ]},
@@ -3171,16 +3171,18 @@ async function sbPullNow(force) {
       // conflict-resolution path instead — force remote in and alert.
       const noServerChange = data.updated_at === sbLastPulledAt;
       const skipApply = !force && noServerChange;
+      // R2-1: flush any pending debounced edit into localStorage BEFORE the backup snapshot
+      // below, so (a) the snapshot captures it and (b) loadProjects() further down can't
+      // discard it — same rule as every other reload path (see _flushPendingSave / M1). Runs
+      // before wasRealConflict is computed: the flush marks sbDirty (via lsSet's push hook),
+      // so an edit that only existed in the debounce window still raises the conflict alert.
+      if (!skipApply) { try { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } } catch (e) {} }
       // R2-4: OR in _hadUnsyncedOnReset — an edit that was unpushed when the previous session
       // ended (sign-out elsewhere, token expiry) had its sbDirty wiped by sbResetSessionState,
       // so without the flag this first post-sign-in pull would overwrite it silently instead of
       // raising the conflict alert that points at the recovery backup.
       const wasRealConflict = (sbDirty || _hadUnsyncedOnReset) && !force && !skipApply;
       if (!skipApply) {
-        // R2-1: flush any pending debounced edit into localStorage BEFORE the backup snapshot
-        // below, so (a) the snapshot captures it and (b) loadProjects() further down can't
-        // discard it — same rule as every other reload path (see _flushPendingSave / M1).
-        try { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } } catch (e) {}
         // R2-2: never apply a malformed remote blob — the same shape checks the session import
         // does (loadSessionFile / C1). Without this, a corrupted team_state row empties local
         // state mid-session and the user's next edit pushes that emptiness over the whole

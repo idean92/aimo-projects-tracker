@@ -1277,7 +1277,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;
 
 /* ── LEAFLET OVERRIDES ─── */
 .leaflet-bar a{background-color:#fff!important;color:var(--text-1)!important;border-color:var(--border)!important;}
-.leaflet-bar a:hover{background:var(--bg-hover)!important;}
+.leaflet-bar a:hover{background-color:var(--bg-hover)!important;} /* P19: shorthand `background` resets background-image, blanking the draw-toolbar sprite icons while hovered — same bug the base rule above was fixed for */
 
 @media(max-width:900px){.ov-cols{grid-template-columns:1fr;}}
 
@@ -2536,8 +2536,8 @@ const KPI_DEFAULTS = {
   8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
   9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
 };
-const APP_VERSION  = 'v4.4';
-const APP_DATE     = '09 Aug 2026';
+const APP_VERSION  = 'v4.5';
+const APP_DATE     = '10 Aug 2026';
 
 // ── What's-new changelog (P16) ──────────────────────────────────────────────
 // Plain-language highlights shown once after each update (see showWhatsNew()).
@@ -2546,6 +2546,10 @@ const APP_DATE     = '09 Aug 2026';
 // To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
 // the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
 const CHANGELOG = [
+  { v:'v4.5', date:'10 Aug 2026', items:[
+    {icon:'🛡️', title:'Safer cloud sync.', text:'Fixed rare cases where an edit typed at the exact moment the app refreshed from the cloud could be lost, and where signing back in after a dropped session could quietly overwrite an unsaved change instead of warning you. The app also now refuses to apply corrupted cloud data.'},
+    {icon:'🗺️', title:'Map toolbar icons stay visible.', text:'The Project Scope draw buttons showed their icons again as of the last update — but disappeared while hovering over them. Now they stay put.'},
+  ]},
   { v:'v4.4', date:'09 Aug 2026', items:[
     {icon:'📱', title:'Works on your phone now.', text:'The app has a real mobile layout — a slide-out menu for the project list, full-screen forms, and bigger tap targets, instead of a squeezed-down desktop view.'},
     {icon:'🗺️', title:'Fixed the map draw toolbar.', text:'The polygon/edit/delete buttons on the Project Scope satellite map were showing as blank boxes. They now show their icons correctly.'},
@@ -2880,6 +2884,7 @@ let sbNeedsRetryPush = false; // a push arrived while one was already in flight;
 let sbPushTimer = null;
 let sbSyncStatus = 'signed-out'; // signed-out | syncing | synced | conflict | error
 let _sbApplyingRemote = false; // guards a pull's lsSet() writes from re-triggering a push
+let _hadUnsyncedOnReset = false; // sbDirty was set when the session ended (sign-out/expiry with an edit unpushed) — the first pull after the next sign-in must treat that like a live conflict, or the overwrite happens with no alert (the reset itself clears sbDirty, so without this flag that pull looks clean)
 function sbTable() { return sbClient.schema(SYNC_SCHEMA).from(SYNC_TABLE); }
 
 // P18: the "Last synced" line used to be time-only (toLocaleTimeString()), which is
@@ -2986,6 +2991,7 @@ function sbResetSessionState() {
   // sbLastPulledAt now null, that race takes the upsert branch and can blind-overwrite the
   // team's row), and a stale sbDirty would make the next sign-in's pull wrongly skip hydrating.
   sbPulled = false;
+  if (sbDirty) _hadUnsyncedOnReset = true; // remember across the reset — see the flag's declaration
   sbDirty = false;
   sbNeedsRetryPush = false;
   // P16: a shadow left by the previous account/session would make the next reconcile
@@ -3165,8 +3171,29 @@ async function sbPullNow(force) {
       // conflict-resolution path instead — force remote in and alert.
       const noServerChange = data.updated_at === sbLastPulledAt;
       const skipApply = !force && noServerChange;
-      const wasRealConflict = sbDirty && !force && !skipApply;
+      // R2-1: flush any pending debounced edit into localStorage BEFORE the backup snapshot
+      // below, so (a) the snapshot captures it and (b) loadProjects() further down can't
+      // discard it — same rule as every other reload path (see _flushPendingSave / M1). Runs
+      // before wasRealConflict is computed: the flush marks sbDirty (via lsSet's push hook),
+      // so an edit that only existed in the debounce window still raises the conflict alert.
+      if (!skipApply) { try { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } } catch (e) {} }
+      // R2-4: OR in _hadUnsyncedOnReset — an edit that was unpushed when the previous session
+      // ended (sign-out elsewhere, token expiry) had its sbDirty wiped by sbResetSessionState,
+      // so without the flag this first post-sign-in pull would overwrite it silently instead of
+      // raising the conflict alert that points at the recovery backup.
+      const wasRealConflict = (sbDirty || _hadUnsyncedOnReset) && !force && !skipApply;
       if (!skipApply) {
+        // R2-2: never apply a malformed remote blob — the same shape checks the session import
+        // does (loadSessionFile / C1). Without this, a corrupted team_state row empties local
+        // state mid-session and the user's next edit pushes that emptiness over the whole
+        // team's row. sbLastPulledAt stays un-adopted, so the next healthy pull retries.
+        const _rd = data.data || {};
+        if ((_rd.projects !== undefined && !Array.isArray(_rd.projects)) ||
+            (_rd.governance !== undefined && (typeof _rd.governance !== 'object' || _rd.governance === null || Array.isArray(_rd.governance))) ||
+            (_rd.kpiSettings !== undefined && (typeof _rd.kpiSettings !== 'object' || _rd.kpiSettings === null || Array.isArray(_rd.kpiSettings)))) {
+          setSyncStatus('error', 'Cloud data looks corrupted — not applied. Working from local data.');
+          return false;
+        }
         // Snapshot whatever's about to be overwritten before applying remote data. This is
         // the general safety net for every case where a pull can discard local work it didn't
         // know was there — not just the flagged conflict case: sbDirty itself only reflects
@@ -3175,7 +3202,13 @@ async function sbPullNow(force) {
         // real local data with no flag ever having caught it. One level of undo, recoverable
         // from DevTools (localStorage.getItem('aimo_pre_pull_backup')) — same pattern as the
         // session-import backup (loadSessionFile / aimo_pre_import_backup).
-        lsSet('aimo_pre_pull_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) });
+        // R2-L1: the conflict alert below directs the user at this backup key — if the write
+        // failed (quota; this is the largest single write in the app) that promise is a lie,
+        // so refuse to overwrite local data rather than proceed without the safety net.
+        if (!lsSet('aimo_pre_pull_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) })) {
+          setSyncStatus('error', 'Cloud data not applied — browser storage is full, so the safety backup of your local data couldn\'t be written. Free up space, then switch tabs and back to retry.');
+          return false;
+        }
         _sbApplyingRemote = true;
         try {
           const d = data.data || {};
@@ -3214,6 +3247,7 @@ async function sbPullNow(force) {
       setSyncStatus('synced', 'No cloud data yet — your next change will create it.');
     }
     if (sbDirty) sbSchedulePush(); // an edit landed while this pull was in flight (or survived a skip-apply above) — flush it now that we have a baseline
+    _hadUnsyncedOnReset = false;   // R2-4: consumed — this pull either surfaced the conflict alert or found nothing to conflict with
     regReconcileSoon(true);        // P16: pick up roster changes made in the Safety Tracker
     return true;
   } catch (err) {
@@ -3287,6 +3321,11 @@ async function regReconcile(force) {
     const { data: rows, error } = await sbClient.from(REG_TABLE)
       .select('id,name,program,parent_id,archived,origin_app');
     if (error) { console.warn('[registry] pull failed', error); _regLastRun = Date.now(); return false; }
+
+    // R2-1: the flush above ran BEFORE the awaited select — an edit debounced during that
+    // network round-trip would be read stale below and written back over at the lsSet.
+    // Re-flush now that the wait is over, immediately before the read-modify-write.
+    try { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } } catch (e) {}
 
     const projects = lsGet(STORAGE_KEY, []);
     if (!Array.isArray(projects)) return false;
@@ -3403,6 +3442,11 @@ async function regReconcile(force) {
 function regReconcileSoon(force) {
   regReconcile(force).then(changed => {
     if (!changed) return;
+    // R2-1: same rule as every other reload path (M1) — flush any edit debounced since the
+    // reconcile's own writes before loadProjects() replaces state. If both happened, the
+    // user's edit wins and the next reconcile (scheduled by that save's push) redoes the
+    // registry merge — user edits are unrecoverable, the merge is idempotent.
+    try { _flushPendingDeriveAndSave(); if (saveTimer) { clearTimeout(saveTimer); saveProjects(); } } catch (e) {}
     loadProjects();
     state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
     if (state.selectedId) renderProjectDetail();
@@ -14741,9 +14785,17 @@ async function loadSessionFile(input) {
   // was manually cleared.
   if (data.projects !== undefined && !Array.isArray(data.projects)) { showErr('✗ Invalid file — "projects" must be a list.'); return; }
   if (data.governance !== undefined && (typeof data.governance !== 'object' || data.governance === null || Array.isArray(data.governance))) { showErr('✗ Invalid file — "governance" must be an object.'); return; }
+  // R2-L3: same check for kpiSettings — a doctored non-object value would persist, cloud-push
+  // to teammates, and be silently ignored by loadKPISettings (overrides appear lost).
+  if (data.kpiSettings !== undefined && (typeof data.kpiSettings !== 'object' || data.kpiSettings === null || Array.isArray(data.kpiSettings))) { showErr('✗ Invalid file — "kpiSettings" must be an object.'); return; }
   // C2: stash the outgoing session before overwriting it, so an accidental import of the
   // wrong file is still recoverable from localStorage even without a manual export.
-  lsSet('aimo_pre_import_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) });
+  // R2-L1: if that stash fails (quota — it's a full-session write), abort rather than
+  // proceed without the safety net the partial-save error message below promises.
+  if (!lsSet('aimo_pre_import_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) })) {
+    showErr('✗ Import cancelled — browser storage is full, so the safety backup of your current session couldn\'t be saved. Free up space and try again. Nothing was changed.');
+    return;
+  }
   // H2: track whether every write actually succeeded (lsSet returns false on a quota failure)
   // instead of assuming success and reporting "Loaded" regardless. Writes are wrapped with
   // _sbApplyingRemote so a partial/failed import can't get a half-imported blob pushed to the
