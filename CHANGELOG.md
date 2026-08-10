@@ -3,6 +3,38 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v4.5 — 09 Aug 2026
+Pre-ship fix set from **Audit Run 2** (the pre-deploy audit of v4.4 — see the
+"Code Audits — AIMO Projects Tracker" Notion page for the full findings). Six
+fixes, all in the cloud-sync/import safety path plus one CSS line:
+- **R2-1 — sync no longer discards in-flight edits.** The cloud pull
+  (`sbPullNow`) and both registry-reconcile paths (`regReconcile` /
+  `regReconcileSoon`) now flush the pending debounced save before replacing
+  state from storage — the same rule the four original reload paths got in
+  v4.x (M1). Previously an edit typed during a reconcile's network round-trip
+  or just before a tab-refocus pull could be silently reverted.
+- **R2-2 — corrupted cloud data is refused.** The pull-apply path now runs the
+  same shape validation as the session import (arrays/objects checked) before
+  writing to localStorage; a malformed `team_state` row sets sync status to
+  error instead of emptying the app and then pushing that emptiness to the
+  team.
+- **R2-4 — dropped-session edits now raise the conflict alert.** `sbDirty` is
+  captured into `_hadUnsyncedOnReset` when a session ends with an unpushed
+  edit; the first pull after re-sign-in treats it like a live conflict (alert
+  + pointer at `aimo_pre_pull_backup`) instead of silently overwriting.
+- **R2-L1 — safety backups must succeed before the overwrite runs.** Both
+  `aimo_pre_pull_backup` (cloud pull) and `aimo_pre_import_backup` (session
+  import) now abort the apply/import with a storage-full message if the backup
+  write fails, instead of proceeding without the promised recovery net.
+- **R2-L3 — imported `kpiSettings` validated** with the same plain-object
+  check as `governance` (was: persisted and cloud-pushed unvalidated).
+- **R2-6 — P19 residue: map draw-toolbar icons no longer vanish on hover.**
+  The `:hover` rule still used the `background` shorthand (which resets
+  `background-image`) one line below the base rule P19 fixed. Now
+  `background-color`.
+- Independently reviewed before ship (touches sync/import = data-loss-
+  sensitive per `CLAUDE.md`); QA'd headless.
+
 ## v4.4 — 09 Aug 2026
 - **P19 — Fixed broken Leaflet/Leaflet.Draw icons on the Project Scope
   satellite map.** From an owner screenshot (06 Aug 2026): the draw

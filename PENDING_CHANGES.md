@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P20 | Audit Run 2 pre-ship set — sync-safety fixes (R2-1, R2-2, R2-4, R2-L1, R2-L3) + draw-toolbar hover icons (R2-6) | ✅ **Shipped (v4.5, 09 Aug 2026)** on the owner's "fix and deploy"; scope = "Pre-ship set" per owner choice. See the Code Audits Notion page, Audit Run 2 |
 | P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | ✅ **Shipped (v4.4, 09 Aug 2026)** on the owner's explicit "begin deployment" |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
 | P17 | Cross-tracker project overlap — shared project registry + program/project/sub-project hierarchy mirror | ✅ **Shipped (v4.0 + v4.1 + v4.2, 06 Aug 2026)** on the owner's explicit "ship it". 3 Opus reviewers → 22 findings, incl. 3 critical (stored XSS via registry ids; deletion-by-absence destroying Safety data; folding discarding real completions) — all fixed before shipping, 92 logic tests passing. Paired with P36 (Safety V6.2), shipped together |
