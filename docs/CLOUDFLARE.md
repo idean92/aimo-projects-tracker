@@ -1,5 +1,12 @@
 # Cloudflare setup — AIMO Tracker
 
+> **⚠️ Retirement drafted, 23 Aug 2026 (P21) — not yet executed.** This Worker
+> (`aimo-projects-tracker`) is planned to be taken over by the merged AIMO KSIA Tracker;
+> this app is being retired, not moved. **Before that cutover deploys, disconnect this
+> repo's Git integration below (Status, ✅ "Worker created and connected") in the
+> Cloudflare dashboard** — Settings → Build → disconnect — or the two deploy pipelines
+> will race for this Worker. See `PENDING_CHANGES.md` P21.
+
 Independent from the Safety Tracker sibling's Cloudflare resources
 (`aimo-safety-tracker` Worker, `aimo-photos` Worker + R2 bucket) — nothing here is
 shared with those.

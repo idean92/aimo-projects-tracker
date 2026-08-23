@@ -1,5 +1,18 @@
 # AIMO Tracker — Working Notes
 
+> **⚠️ App retirement drafted, 23 Aug 2026 (P21) — not yet executed.** The owner asked
+> to move the merged AIMO KSIA Tracker (`idean92/aimo-tracker`) onto this app's
+> Cloudflare Worker/URL and retire this app outright, after a status review found this
+> app's live URL 404ing. Everything below still describes this app as it stands today —
+> nothing has changed yet — but **before that cutover can deploy, this repo's Cloudflare
+> Git integration must be disconnected** (Settings → Build → disconnect in the Cloudflare
+> dashboard). It currently deploys on a push to any branch (verified 06 Aug 2026, see §
+> Deployment below); once the merged app's `wrangler.toml` targets this Worker name, a
+> stray push here — including a routine feedback triage on this repo's own dead inbox —
+> would silently overwrite it. See `PENDING_CHANGES.md` P21 and, in the other repo,
+> `PENDING_CHANGES.md` INF-10 and `docs/DEPLOYMENT.md` § Runbook for the second hostname
+> cutover for the full plan.
+
 ## What this is
 AIMO Tracker is a project-management tool for the AIMO (airport infrastructure /
 master-planning) team at King Salman International Airport (KSIA). It tracks MOC
