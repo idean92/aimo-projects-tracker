@@ -61,24 +61,36 @@ https://aimo-projects-tracker.ideandaai.workers.dev.
   `public/index.html` (the deploy copy) → commit → push — only on an
   explicit "ship it," per the hard rule below.
 
-## Hard rule: no version changes or deploys without explicit approval
-No new version of the app is built, updated, or deployed unless the owner has
-explicitly said to do so, in that specific instance. This overrides any other signal —
-a backlog item, a "next in sequence" version, or momentum from a prior task are never
-sufficient alone.
-- Do not edit code to implement a change until the owner has approved that specific
-  change.
-- Do not bump the version or hand over a new build until explicitly told to ship it —
-  even if already implemented. Approval-to-implement and approval-to-deploy are
-  separate green lights.
-- If in doubt, ask.
+## Deploy policy: ship-then-audit (updated 23 Aug 2026, owner instruction)
+
+**Implement and deploy are one green light now, not two.** The owner is the sole
+user of this app and has explicitly accepted bugs and holes as the cost of moving
+faster. Default behavior: implement the change, QA it locally, and push — the push
+is the deploy (see § Deployment above; "Deploying" still means copy
+`aimo-tracker.html` → `public/index.html` → commit → push, just without a separate
+"ship it" gate). No waiting on a plan-approval round trip before writing code.
+
+*(This section previously required two separate explicit approvals — implement,
+then deploy — for every change. That was the main source of turnaround time; the
+owner asked for it removed. See git history for the prior text.)*
+
+**One guardrail survives regardless of bug/holes tolerance: irreversible loss of
+real data.** Before running anything that destroys data with no way back —
+destructive Supabase operations outside normal app writes, a migration with no
+rollback, a session-import path that could wipe existing data, force-pushing or
+rewriting shared git history — say what you're about to do and wait for an
+explicit go-ahead. Everything else ships without waiting.
+
+If a change is genuinely ambiguous, ask. Don't ask just to confirm a plan that's
+clearly implied by the request.
 
 ## Git workflow
 - Commits in this repo are the version history now — no more hand-copying the file
   before risky edits (that was the old process; see `docs/ARCHITECTURE.md`). Commit
   before any risky edit so it stays revertible.
-- Pushing to the remote / opening a PR is not implicitly authorized by "build this" —
-  that's a separate instruction, same principle as the hard rule above.
+- Pushing to the remote is the deploy mechanism (§ Deployment) — push once a change
+  is implemented and QA'd, per § Deploy policy above. Opening a PR is still not
+  implicit in "build this"; this repo doesn't use PRs to ship.
 - Destructive git ops (force-push, history rewrite, branch deletion) require explicit
   confirmation, always.
 
@@ -91,20 +103,23 @@ in `src/worker.js`. (This section previously said it wasn't built — corrected
 05 Aug 2026.) Change requests also still come directly from the owner in
 conversation. The same discipline applies either way:
 1. Consolidate a request into `PENDING_CHANGES.md` as a new item (short
-   root-cause/approach note) — do not touch `aimo-tracker.html` yet.
-2. Build only on an explicit go ("go", "build it", "start", "implement").
+   root-cause/approach note).
+2. Implement it directly — no separate "go" needed unless the change touches the
+   data-loss guardrail in § Deploy policy above, in which case flag it and wait.
 3. Once implemented and QA'd, bump `APP_VERSION` / `APP_DATE` (see `const APP_VERSION`
    near the top of `aimo-tracker.html` for the current value) and add a `CHANGELOG.md`
-   entry — it still isn't shipped/handed over until a separate, explicit "ship it".
+   entry, then push (§ Deploy policy) in the same change.
 4. Update `PENDING_CHANGES.md` to mark the item shipped, as part of the same change.
 
-## Code review before deploying
-Spawn a review subagent on a stronger model before shipping when:
-- Major version bump (left-most version number changes, e.g. v1.x → v2.0).
-- The change touches sensitive logic: `stageDocs` mutation (see the gotcha in
-  `docs/ARCHITECTURE.md`), KPI scoring, or session import/export (data-loss risk).
-- It feels architecturally significant or risky, even if technically minor.
-Skip review for minor/patch bumps, styling, copy edits, small isolated fixes.
+## Review — after the push, not before
+
+The mandatory pre-ship review gate is retired as of 23 Aug 2026. Push first; for
+anything nontrivial, spawn a review subagent on a stronger model against the pushed
+diff afterward, and fix findings in a follow-up push. The one exception is the
+data-loss guardrail in § Deploy policy above — `stageDocs` mutation (see the gotcha
+in `docs/ARCHITECTURE.md`), destructive Supabase ops, or session import/export
+paths that could wipe data get a look and the owner's go-ahead *before* running,
+not after.
 
 ## Versioning rules
 - Every change is recorded in `CHANGELOG.md` (newest at top). No ship without an
