@@ -6,6 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
+| P21 | Replace the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO Process KPIs V1.3" deck (owner request) | 📋 Consolidated only — mapping/data-source analysis done, 3 open questions for the owner, nothing implemented |
 | P20 | Audit Run 2 pre-ship set — sync-safety fixes (R2-1, R2-2, R2-4, R2-L1, R2-L3) + draw-toolbar hover icons (R2-6) | ✅ **Shipped (v4.5, 10 Aug 2026)** on the owner's "fix and deploy"; scope = "Pre-ship set" per owner choice. See the Code Audits Notion page, Audit Run 2 |
 | P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | ✅ **Shipped (v4.4, 09 Aug 2026)** on the owner's explicit "begin deployment" |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
@@ -75,6 +76,74 @@ process in `CLAUDE.md`. Newest items at the top of each section.
   new muted semantic set. Deliberately left out of P2's scope; low visual impact.
 
 ## 🆕 New
+- **P21 — Replace the 9-KPI framework with RAC AIMO's 6-KPI deck** (26 Aug 2026,
+  owner-supplied deck: *"AIMO Process KPIs V1.3", 02-Jul-2026*, RAC AIMO / KSIA
+  Project Review, "KPIs (proposed)"). Owner asked to remove the current 9 tracked
+  KPIs and replace with the 6 in the deck, plus an assessment of data collection
+  and whether sources already exist. **Consolidated only — `aimo-tracker.html`
+  not touched.**
+
+  **The 6 new KPIs, as specified in the deck:**
+  1. *(Time)* Design/Design-development/Commissioning document review duration —
+     target <18 wd (design), <25 wd (construction), <22 wd (OPS packages); owner RAC AIMO.
+  2. *(Time)* Masterplan updates / Project Concurrence / Concept Plan review —
+     max duration until detailed feedback, target <12 wd; owner RAC AIMO.
+  3. *(Quality)* Revisions from 1st submission to acceptance ("turnaround rate") —
+     target <3 revisions (RAC design acceptance and GACA submissions); owner RAC AIMO.
+  4. *(Quality)* GACA Submission Acceptance Rate — (Approvals ÷ Submissions) × 100%,
+     ≥85% Excellent, <70% critical gap; owner RAC AIMO.
+  5. *(Efficiency)* Resubmission Efficiency Index (REI) — Timeliness (≤7 wd=40pts,
+     8–12 wd=20, >12 wd=0) + Correct Closure ((Closed/Total)×40) + Repeat Penalty
+     (20 − Repeat%×0.2), 100 max; ≥95 Excellent, ≥80 Good; owner RAC AIMO/KSIA.
+  6. *(Time)* Timely signature collection — from package-completion agreement to
+     all signatures obtained before GACA submission, target <5 wd; owner KSIA.
+
+  **Mapping against the current 9 (`KPI_DEFAULTS`, `calcKPIs()`,
+  `aimo-tracker.html` ~L2528/~L4765) — verified against the live code, not
+  assumed:**
+
+  | New KPI | Maps to current | Data source | Build cost |
+  |---|---|---|---|
+  | 1. Review duration by package type | KPI 7 (RAC-RTT) | **Exists** — `reviewEvents` submission→response dates, already used for KPI 7 — but KPI 7 is an *average* across all cycles pooled; new KPI 1 wants *total* duration, split into 3 package types the app currently only partially distinguishes (see Q1 below) | Medium–high, pending Q1 |
+  | 2. Masterplan/Concurrence/Concept Plan review | *(none)* | **Does not exist.** No `masterplan`/`concurrence`/`concept plan` stage anywhere in the file — this is a net-new review-cycle stage (its own submission/response log), not a relabel | High — new feature |
+  | 3. Revisions to acceptance | KPI 3 (avg review cycles / PRRCR) | **Exists** — `reviewEvents` submission counts per stage, already computed as `prrcr.avgCycles` | Low — threshold/label change |
+  | 4. GACA Submission Acceptance Rate | KPI 6 (GACA acceptance rate) | **Exists** — `submissionLog` accepted/total, identical formula already implemented | Low — threshold change only (95/80 → 85/70) |
+  | 5. Resubmission Efficiency Index | KPI 4 (KREI score) | **Exists** — `kreiScores()` already computes Correct Closure (identical formula) and Repeat Penalty (identical formula); only the Timeliness sub-score method differs (current: % of cycles under a bucket; deck: per-cycle point score) | Low–medium — recalibrate one sub-score + thresholds |
+  | 6. Signature collection timeliness | *(none — currently unexposed)* | **Already computed**, just not surfaced as a KPI. `buildSigPeriodRow()` (~L5670) already calculates exactly this: working days from `stageDocs[stage].projectOwnerAcceptance` (package-completion agreement date) to the GACA-submission milestone's actual date. Today it only shows as a sub-row in the Portfolio Schedule table | **Lowest** — wrap the existing calc as a KPI card |
+
+  **Retired (no equivalent in the new 6):** current KPI 1 (PSQS), KPI 2 (first
+  submission completeness), KPI 5 (end-to-end days), KPI 8 (comment close rate),
+  KPI 9 (C/D major finding ratio). Their raw inputs (`docList.commentsRaised/
+  commentsClosed`, `classC/DRaised`) stay in the data model regardless — REI
+  (new KPI 5) depends on the same fields KREI/CCR/CDR already read — only the
+  standalone scorecard *cards* for these five go away.
+
+  **Open questions before this can be built (owner input needed, not a call to
+  make alone given this touches KPI scoring):**
+  1. **KPI 1's three package types.** The app's review-cycle data currently
+     only cleanly distinguishes two stages: *Design Package Review*
+     (`gaca_package_review`) and *Commissioning Package Review* (docs inside
+     `gaca_commissioning_submission` — test procedures, compliance statement,
+     as-built, O&M manuals). The deck wants three: design, **construction**,
+     and **OPS**. Does "construction packages" = the existing Commissioning
+     Package Review, and "OPS packages" = something not yet tracked at all
+     (e.g. post-commissioning operational readiness), or is the mapping
+     different? This decides whether KPI 1 is a relabel or needs a new
+     review-cycle stage.
+  2. **KPI 2 is a genuinely new feature**, not a relabel — confirm the owner
+     wants a new "Masterplan / Concurrence / Concept Plan Review" stage built
+     (its own doc register + submission/response log, mirroring the existing
+     Design Package Review pattern) so KPI 2 has something to measure.
+  3. **REI's stated thresholds look like they may have a slide/extraction
+     typo** ("No acceptable: >80" directly under "Good: ≥80") — please confirm
+     the intended band, e.g. Excellent ≥95 / Good ≥80 / Not acceptable <80.
+
+  **Not yet approved to build.** Per `CLAUDE.md`, this is a major version bump
+  (KPI framework replacement) touching sensitive KPI-scoring logic — requires
+  an independent review pass before shipping, and no code changes happen until
+  the owner gives an explicit go on a scoped plan (the three questions above
+  need answers first, since Q1/Q2 materially change how much is a relabel vs.
+  a new build).
 - **P18 — Cloud Sync: last-synced date + who last saved** (06 Aug 2026, in-app
   feedback via the Notion Feedback Inbox, submitted 05 Aug 2026 against v3.0 ·
   Homepage: *"in the 'Cloud Sync', the last sync should also display the date (in
