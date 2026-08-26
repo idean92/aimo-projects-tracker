@@ -144,6 +144,55 @@ process in `CLAUDE.md`. Newest items at the top of each section.
   the owner gives an explicit go on a scoped plan (the three questions above
   need answers first, since Q1/Q2 materially change how much is a relabel vs.
   a new build).
+
+  **Owner answers (26 Aug 2026) — design finalized, still awaiting the build
+  go-ahead:**
+  1. **KPI 1 package mapping confirmed:** "Construction" = existing *Design
+     Package Review* (`gaca_package_review`, <25 wd target), "OPS" = existing
+     *Commissioning Package Review* (docs inside `gaca_commissioning_submission`,
+     <22 wd target). Note: neither existing stage corresponds to the deck's
+     separate "design reviews" <18 wd bucket — `design_review` is a single
+     milestone date in this app (no `STAGE_DOCS` entry, no review-cycle log),
+     so KPI 1 will ship as **two** sub-targets (Construction, OPS), each its
+     own total-working-days figure vs. its own threshold, not three. Flagging
+     this explicitly in case a design-review cycle target is still wanted —
+     say so if it needs adding.
+  2. **KPI 2 (Masterplan/Concurrence/Concept Plan) is portfolio/program-level,
+     not per-project** — confirmed net-new, and deliberately *not* modeled as
+     its own project. Scope is simple: a log of portfolio-related document
+     submissions and RAC AIMO's responses (the same submission→response
+     back-and-forth shape as the existing per-project review cycles), but
+     **no CRS upload/parsing** — plain manual date + description entries only.
+     Because it isn't tied to any one project, this needs a new *portfolio-level*
+     data store (a new top-level array, sibling to `govState`, not another
+     `stageDocs` key) and its own UI surface — proposed home: a new panel in
+     the Overview tab (alongside the per-project KPI scorecard), not nested
+     inside any project. KPI 2's calculation is "max duration until feedback"
+     (the slowest cycle, not an average or a sum) — a third distinct
+     aggregation style alongside KPI 1's *sum* and KPI 3/5's *average*.
+  3. **REI thresholds confirmed:** Excellent ≥95, Good ≥80, **Not acceptable
+     <80** (the deck's "No acceptable: >80" was a slide/extraction typo).
+
+  **Finalized scope for the build (pending explicit go):**
+  - Replace `KPI_DEFAULTS`/`calcKPIs()`'s 9 entries with 6, renumbered to match
+    the deck (KPI 1–6 as listed above); drop the 5 retired KPIs' scorecard
+    cards (their raw fields stay, still read by REI).
+  - KPI 1: sum (not average) of working-day review-cycle durations, split into
+    Construction (`gaca_package_review`) and OPS (`gaca_commissioning_submission`)
+    sub-totals, thresholds 25/22 wd.
+  - KPI 3: relabel/re-threshold existing `prrcr.avgCycles` (<3 revisions).
+  - KPI 4: relabel existing GACA acceptance rate, thresholds 85/70.
+  - KPI 5: rename KREI → REI, keep Correct-Closure and Repeat-Penalty sub-scores
+    as-is, recalibrate the Timeliness sub-score to the deck's per-cycle points
+    (≤7 wd=40, 8–12 wd=20, >12 wd=0, averaged across cycles), thresholds 95/80.
+  - KPI 6: new scorecard card wrapping the existing `buildSigPeriodRow()` /
+    `projectOwnerAcceptance`→milestone-actual working-days calc, threshold 5 wd.
+  - KPI 2: **the one genuinely new build** — a new portfolio-level submission/
+    response log (own storage, own sync payload field, own Overview-tab UI),
+    scored as max-working-days-to-feedback, threshold 12 wd.
+  - Given the scope (KPI-scoring rewrite + a new portfolio-level data domain),
+    this needs an independent review pass before shipping per `CLAUDE.md`, and
+    is a major version bump.
 - **P18 — Cloud Sync: last-synced date + who last saved** (06 Aug 2026, in-app
   feedback via the Notion Feedback Inbox, submitted 05 Aug 2026 against v3.0 ·
   Homepage: *"in the 'Cloud Sync', the last sync should also display the date (in
