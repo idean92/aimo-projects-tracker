@@ -2525,19 +2525,29 @@ const KPI_SETTINGS_KEY = 'aimo_kpi_settings';
 // Safety Tracker as an irreversible tombstone. Synced, so a delete on one device reaches
 // the others rather than being resurrected by them.
 const DELETED_KEY  = 'aimo_deleted_projects';
+// P21: portfolio/program-level review log (Masterplan updates, Project Concurrence, Concept
+// Plan reviews). Deliberately NOT a stageDocs key — it isn't tied to any one project, so it
+// gets its own top-level store, synced/exported alongside projects/governance/kpiSettings.
+const PORTFOLIO_KEY = 'aimo_portfolio_reviews';
+// P21: replaced the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO Process KPIs V1.3"
+// deck (see PENDING_CHANGES.md). KPI 1 carries per-package-type sub-thresholds (`sub`) since
+// the deck scores Construction and OPS packages against different targets; getKPIS()/
+// updateKPISetting() take an optional subKey to read/write those. KPI 2 is portfolio-wide
+// (see PORTFOLIO_KEY above) — its thresholds still live here like any other KPI.
 const KPI_DEFAULTS = {
-  1: { goodT:80,   warnT:70,  invert:false, unit:'/100',    label:'PSQS score (out of 100)' },
-  2: { goodT:90,   warnT:70,  invert:false, unit:'%',       label:'First submission completeness' },
-  3: { goodT:1.5,  warnT:2.5, invert:true,  unit:' cycles', label:'Avg review cycles' },
-  4: { goodT:85,   warnT:70,  invert:false, unit:'/100',    label:'KREI score (out of 100)' },
-  5: { goodT:30,   warnT:45,  invert:true,  unit:' days',   label:'End-to-end days' },
-  6: { goodT:95,   warnT:80,  invert:false, unit:'%',       label:'GACA acceptance rate' },
-  7: { goodT:14,   warnT:21,  invert:true,  unit:' days',   label:'RAC review working days' },
-  8: { goodT:85,   warnT:70,  invert:false, unit:'%',       label:'Comment close rate' },
-  9: { goodT:25,   warnT:40,  invert:true,  unit:'%',       label:'C/D major finding ratio' },
+  1: { unit:' wd', invert:true, label:'Document Review Duration — Construction & OPS',
+       sub: {
+         construction: { goodT:25, warnT:35, invert:true, unit:' wd', label:'Construction packages (Design Package Review)' },
+         ops:          { goodT:22, warnT:30, invert:true, unit:' wd', label:'OPS packages (Commissioning Package Review)' },
+       } },
+  2: { goodT:12, warnT:18, invert:true,  unit:' wd',        label:'Masterplan / Concurrence / Concept Plan Review (portfolio-wide)' },
+  3: { goodT:3,  warnT:4,  invert:true,  unit:' revisions', label:'Revisions to Acceptance' },
+  4: { goodT:85, warnT:70, invert:false, unit:'%',          label:'GACA Submission Acceptance Rate' },
+  5: { goodT:95, warnT:80, invert:false, unit:'/100',       label:'Resubmission Efficiency Index (REI)' },
+  6: { goodT:5,  warnT:8,  invert:true,  unit:' wd',        label:'Signature Collection Timeliness' },
 };
-const APP_VERSION  = 'v4.5';
-const APP_DATE     = '10 Aug 2026';
+const APP_VERSION  = 'v5.0';
+const APP_DATE     = '26 Aug 2026';
 
 // ── What's-new changelog (P16) ──────────────────────────────────────────────
 // Plain-language highlights shown once after each update (see showWhatsNew()).
@@ -2546,6 +2556,9 @@ const APP_DATE     = '10 Aug 2026';
 // To announce a release: bump APP_VERSION/APP_DATE above, add one entry here at
 // the top, AND add the full entry to CHANGELOG.md (see CLAUDE.md § Versioning).
 const CHANGELOG = [
+  { v:'v5.0', date:'26 Aug 2026', items:[
+    {icon:'📊', title:'New KPI framework.', text:'The KPI scorecard now tracks the 6 KPIs from RAC AIMO\'s official KPI framework instead of the previous 9: document review duration (Construction & OPS), Masterplan/Concept Plan review time, revisions to acceptance, GACA acceptance rate, the Resubmission Efficiency Index (REI, formerly KREI), and signature collection time — the last one newly surfaced as its own KPI. Masterplan/Concurrence/Concept Plan review is portfolio-wide, so it now has its own log you can add rounds to from its KPI card.'},
+  ]},
   { v:'v4.5', date:'10 Aug 2026', items:[
     {icon:'🛡️', title:'Safer cloud sync.', text:'Fixed rare cases where an edit typed at the exact moment the app refreshed from the cloud could be lost, and where signing back in after a dropped session could quietly overwrite an unsaved change instead of warning you. The app also now refuses to apply corrupted cloud data.'},
     {icon:'🗺️', title:'Map toolbar icons stay visible.', text:'The Project Scope draw buttons showed their icons again as of the last update — but disappeared while hovering over them. Now they stay put.'},
@@ -2630,6 +2643,7 @@ const STATUS_INIT_CLR = {'on-track':'var(--accent)','delayed':'var(--red)','ahea
 let state = { projects:[], selectedId:null, activeTab:'overview', sbFilter:'all', view:'home' };
 let govState = { actions:[], persons:[] };
 let kpiSettings = {}; // overrides for KPI_DEFAULTS, keyed by KPI number as string
+let portfolioReviews = { rounds: [] }; // P21 KPI 2 — portfolio-wide Masterplan/Concurrence/Concept Plan review log
 let govFilters = { status:'open', project:'all', assignee:'all', priority:'all' };
 let govDetailOpen = null;  // id of currently expanded action row
 let govEditingId  = null;  // id being edited in modal
@@ -2812,7 +2826,7 @@ let _storageWarned = false;
 function lsSet(key, value) {
   try {
     localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-    if (!_sbApplyingRemote && (key === STORAGE_KEY || key === GOVERNANCE_KEY || key === KPI_SETTINGS_KEY || key === DELETED_KEY)) {
+    if (!_sbApplyingRemote && (key === STORAGE_KEY || key === GOVERNANCE_KEY || key === KPI_SETTINGS_KEY || key === DELETED_KEY || key === PORTFOLIO_KEY)) {
       sbSchedulePush();
     }
     // L5: a write succeeding again after an earlier failure means there's room again — clear
@@ -3063,6 +3077,7 @@ function sbBuildPayload() {
     governance: lsGet(GOVERNANCE_KEY, { actions: [], persons: [] }),
     kpiSettings: lsGet(KPI_SETTINGS_KEY, {}),
     deletedProjects: lsGet(DELETED_KEY, {}),   // review fix: deletions must reach other devices
+    portfolioReviews: lsGet(PORTFOLIO_KEY, { rounds: [] }),   // P21 KPI 2
   };
 }
 
@@ -3190,7 +3205,8 @@ async function sbPullNow(force) {
         const _rd = data.data || {};
         if ((_rd.projects !== undefined && !Array.isArray(_rd.projects)) ||
             (_rd.governance !== undefined && (typeof _rd.governance !== 'object' || _rd.governance === null || Array.isArray(_rd.governance))) ||
-            (_rd.kpiSettings !== undefined && (typeof _rd.kpiSettings !== 'object' || _rd.kpiSettings === null || Array.isArray(_rd.kpiSettings)))) {
+            (_rd.kpiSettings !== undefined && (typeof _rd.kpiSettings !== 'object' || _rd.kpiSettings === null || Array.isArray(_rd.kpiSettings))) ||
+            (_rd.portfolioReviews !== undefined && (typeof _rd.portfolioReviews !== 'object' || _rd.portfolioReviews === null || !Array.isArray(_rd.portfolioReviews.rounds)))) {
           setSyncStatus('error', 'Cloud data looks corrupted — not applied. Working from local data.');
           return false;
         }
@@ -3205,7 +3221,7 @@ async function sbPullNow(force) {
         // R2-L1: the conflict alert below directs the user at this backup key — if the write
         // failed (quota; this is the largest single write in the app) that promise is a lie,
         // so refuse to overwrite local data rather than proceed without the safety net.
-        if (!lsSet('aimo_pre_pull_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) })) {
+        if (!lsSet('aimo_pre_pull_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}), portfolioReviews: lsGet(PORTFOLIO_KEY, {rounds:[]}) })) {
           setSyncStatus('error', 'Cloud data not applied — browser storage is full, so the safety backup of your local data couldn\'t be written. Free up space, then switch tabs and back to retry.');
           return false;
         }
@@ -3215,6 +3231,7 @@ async function sbPullNow(force) {
           if (d.projects) lsSet(STORAGE_KEY, d.projects);
           if (d.governance) lsSet(GOVERNANCE_KEY, d.governance);
           if (d.kpiSettings) lsSet(KPI_SETTINGS_KEY, d.kpiSettings);
+          if (d.portfolioReviews) lsSet(PORTFOLIO_KEY, d.portfolioReviews);
           // Union-merge tombstones rather than taking remote wholesale, so a delete made on
           // this device isn't dropped by a pull that raced it. Absent on pre-v4.2 blobs.
           if (d.deletedProjects && typeof d.deletedProjects === 'object') {
@@ -3231,6 +3248,7 @@ async function sbPullNow(force) {
         loadProjects();
         loadGovernance();
         loadKPISettings();
+        loadPortfolioReviews();
         state.projects.forEach(p => { if (p.tasks && p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
         if (state.selectedId) renderProjectDetail();
         renderSidebar();
@@ -3572,7 +3590,7 @@ function revealApp() {
   const gate = document.getElementById('authGate');
   if (_appRevealed) { if (gate) gate.classList.add('hidden'); _gateLock(false); return; }
   _appRevealed = true;
-  loadProjects(); loadGovernance(); loadKPISettings(); // pick up whatever the pull just applied
+  loadProjects(); loadGovernance(); loadKPISettings(); loadPortfolioReviews(); // pick up whatever the pull just applied
   // Migration: strip any legacy multi-project seed data (v4 and below)
   const _hadOldSeeds = state.projects.filter(p => p._seedV).length > 1;
   if (_hadOldSeeds) {
@@ -4408,7 +4426,7 @@ function renderHomepage() {
       const _par=depth===1?parentProjectOf(p):null;
       const subNote=_par?`<div class="hp-sub-note">↳ Sub-project of ${esc(_par.name)}</div>`:'';
       const kpiH = projectKPIHealth(p);
-      const kpiStrip = kpiH ? `<div class="kpi-health-strip" title="KPI 1–7 health: ${kpiH.green} green · ${kpiH.amber} amber · ${kpiH.red} red">
+      const kpiStrip = kpiH ? `<div class="kpi-health-strip" title="Project KPI health: ${kpiH.green} green · ${kpiH.amber} amber · ${kpiH.red} red">
         ${kpiH.rags.map(r=>`<div class="kpi-dot" style="background:${r==='green'?'var(--green)':r==='amber'?'var(--amber)':r==='red'?'var(--red)':'var(--border)'};opacity:${r==='none'?.3:1};"></div>`).join('')}
         <span style="font-size:9.5px;color:var(--text-3);margin-left:2px;">${kpiH.green}/${kpiH.withData} KPIs</span>
       </div>` : '';
@@ -4687,15 +4705,17 @@ function kreiScores(p) {
   });
   const wds = rsubDetails.map(r => r.days);
   const hasResubs = wds.length > 0;
+  // P21: per-cycle point scoring per the deck's REI definition (≤7 wd = 40 pts, 8–12 wd = 20,
+  // >12 wd = 0), averaged across cycles — replaces the previous aggregate-percentage-of-cycles
+  // method (was: 40 if ≥80% of cycles ≤7d, else 20 if ≥80% ≤14d, else 0). pct7 kept as an
+  // informational stat (still shown in the KPI detail view) even though it no longer drives
+  // the score directly.
   let scoreC = null, pct7 = 0;
   if (hasResubs) {
-    const le7  = wds.filter(d => d <= 7).length;
-    const le14 = wds.filter(d => d <= 14).length;
+    const le7 = wds.filter(d => d <= 7).length;
     pct7 = Math.round((le7 / wds.length) * 1000) / 10;
-    const pct14 = Math.round((le14 / wds.length) * 1000) / 10;
-    if (pct7 >= 80) scoreC = 40;
-    else if (pct14 >= 80) scoreC = 20;
-    else scoreC = 0;
+    const cycleScores = wds.map(d => d <= 7 ? 40 : d <= 12 ? 20 : 0);
+    scoreC = Math.round((cycleScores.reduce((a,b)=>a+b,0) / cycleScores.length) * 10) / 10;
   }
 
   // A score
@@ -4724,7 +4744,7 @@ function kreiScores(p) {
 
 
 /* ══════════════════════════════════════════════════
-   KPI 1–7 CALCULATION
+   KPI CALCULATION ENGINE (P21 — 6-KPI framework)
 ══════════════════════════════════════════════════ */
 function calcPSQSFromRegistry(ev, registry) {
   // Returns {ops,eng,sms,total} or null if no data
@@ -4763,38 +4783,42 @@ function calcPSQSFromRegistry(ev, registry) {
    owner's explicit decision (PENDING_CHANGES.md P17), and differs on purpose from the
    Safety Tracker, which rolls up everywhere. */
 function calcKPIs(p) {
+  const GACA_SUB = ['gaca_design_submission','gaca_commissioning_acceptance'];
+
+  // KPI 1: Document Review Duration — Construction (Design Package Review) & OPS
+  // (Commissioning Package Review), scored separately per the deck's per-package-type
+  // targets. Unlike the old RAC-RTT this replaces, the deck asks for the TOTAL (sum) of
+  // all review-cycle working days on the project, not an average.
+  function stageDur(key) {
+    const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
+    let total = 0, cycles = 0, has = false;
+    for (let i=0; i<events.length-1; i++) {
+      if (events[i].type==='submission' && events[i+1].type==='response'
+          && events[i].date && events[i+1].date) {
+        const d = workingDaysKSA(events[i].date, events[i+1].date);
+        if (d !== null && d >= 0) { total += d; cycles++; has = true; }
+      }
+    }
+    return has ? { total, cycles } : null;
+  }
+  const constructionDur = stageDur('gaca_package_review');
+  const opsDur          = stageDur('gaca_commissioning_submission');
+  const pkgDur = {
+    constructionTotal:  constructionDur ? constructionDur.total  : null,
+    constructionCycles: constructionDur ? constructionDur.cycles : 0,
+    opsTotal:           opsDur ? opsDur.total  : null,
+    opsCycles:          opsDur ? opsDur.cycles : 0,
+  };
+
+  // KPI 2 (Masterplan/Concurrence/Concept Plan review) is portfolio-wide, not per-project —
+  // see calcPortfolioKPI() and PORTFOLIO_KEY. Not computed here.
+
+  // KPI 3: Revisions to Acceptance — cycle count per stage, rejection %, critical count
+  // (formerly PRRCR; same underlying calc, renumbered/rethresholded per the deck)
   const PKG = [
     { key:'gaca_package_review',           label:'Design' },
     { key:'gaca_commissioning_submission', label:'Comm.'  },
   ];
-  const GACA_SUB = ['gaca_design_submission','gaca_commissioning_acceptance'];
-
-  // KPI 1: PSQS — first response event only per stage (initial package quality)
-  let psqsArr = [];
-  PKG.forEach(({key}) => {
-    const registry = p.stageDocs?.[key]?.documentRegistry || [];
-    const events = p.stageDocs?.[key]?.reviewEvents || [];
-    const firstResp = events.find(ev => ev.type === 'response');
-    if (!firstResp) return;
-    const regScore = calcPSQSFromRegistry(firstResp, registry);
-    if (regScore !== null) { psqsArr.push(regScore.total); return; }
-    // Legacy: manual psqsOps/Eng/Sms
-    if (firstResp.psqsOps != null || firstResp.psqsEng != null || firstResp.psqsSms != null) {
-      psqsArr.push((firstResp.psqsOps||0) + (firstResp.psqsEng||0) + (firstResp.psqsSms||0));
-    }
-  });
-  const psqs = psqsArr.length ? Math.round(psqsArr.reduce((a,b)=>a+b,0)/psqsArr.length) : null;
-
-  // KPI 2: FSCR — first submission per stage complete (not partial)?
-  let fscrTotal = 0, fscrComplete = 0;
-  PKG.forEach(({key}) => {
-    const events = p.stageDocs?.[key]?.reviewEvents || [];
-    const first = events.find(e => e.type==='submission' && !e.isNonGaca);
-    if (first) { fscrTotal++; if (!first.isPartial) fscrComplete++; }
-  });
-  const fscr = fscrTotal > 0 ? Math.round((fscrComplete/fscrTotal)*100) : null;
-
-  // KPI 3: PRRCR — avg cycles per stage, rejection %, critical count
   let totalRaised = 0, totalD = 0, totalC = 0, cyclesArr = [];
   PKG.forEach(({key}) => {
     const events = p.stageDocs?.[key]?.reviewEvents || [];
@@ -4811,33 +4835,9 @@ function calcKPIs(p) {
   const avgCycles = cyclesArr.length
     ? Math.round((cyclesArr.reduce((a,b)=>a+b,0)/cyclesArr.length)*10)/10 : null;
   const rejPct = totalRaised > 0 ? Math.round((totalD/totalRaised)*100) : null;
-  const prrcr  = { avgCycles, rejPct, criticalC: totalC };
+  const revisions = { avgCycles, rejPct, criticalC: totalC };
 
-  // KPI 4: KREI — existing kreiScores
-  const krei = kreiScores(p);
-
-  // KPI 5: E2E-TRS — first KSIADC submission to GACA submission date
-  let e2eDays = [];
-  [
-    { pkgKey:'gaca_package_review',           subKey:'gaca_design_submission'       },
-    { pkgKey:'gaca_commissioning_submission', subKey:'gaca_commissioning_acceptance' },
-  ].forEach(({pkgKey, subKey}) => {
-    const events   = p.stageDocs?.[pkgKey]?.reviewEvents || [];
-    // L9: exclude partial submissions — the footnote already says the E2E clock starts at the
-    // first NON-partial submission, but this predicate didn't filter isPartial, inflating days
-    // whenever a partial submission was logged before the real first submission.
-    const firstSub = events.find(e => e.type==='submission' && !e.isNonGaca && !e.isPartial && e.date);
-    const log      = p.stageDocs?.[subKey]?.submissionLog || [];
-    const gacaFirst = log.filter(r => r.dateSubmitted)
-      .sort((a,b) => new Date(a.dateSubmitted)-new Date(b.dateSubmitted))[0];
-    if (firstSub?.date && gacaFirst?.dateSubmitted) {
-      const d = Math.round((new Date(gacaFirst.dateSubmitted)-new Date(firstSub.date))/86400000);
-      if (d >= 0) e2eDays.push(d);
-    }
-  });
-  const e2e = e2eDays.length ? Math.round(e2eDays.reduce((a,b)=>a+b,0)/e2eDays.length) : null;
-
-  // KPI 6: GACA Acceptance Rate
+  // KPI 4: GACA Submission Acceptance Rate (formerly KPI 6; same calc, new thresholds)
   let gacaTotal = 0, gacaAcc = 0;
   GACA_SUB.forEach(sk => {
     const log = p.stageDocs?.[sk]?.submissionLog || [];
@@ -4846,49 +4846,32 @@ function calcKPIs(p) {
   });
   const gacaAccRate = gacaTotal > 0 ? Math.round((gacaAcc/gacaTotal)*100) : null;
 
-  // KPI 7: RAC-RTT — working days from submission event to next response event
-  let rttDays = [];
-  PKG.forEach(({key}) => {
-    const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
-    for (let i=0; i<events.length-1; i++) {
-      if (events[i].type==='submission' && events[i+1].type==='response'
-          && events[i].date && events[i+1].date) {
-        const d = workingDaysKSA(events[i].date, events[i+1].date);
-        if (d !== null && d >= 0) rttDays.push(d);
-      }
-    }
-  });
-  const racRtt = rttDays.length ? Math.round(rttDays.reduce((a,b)=>a+b,0)/rttDays.length) : null;
+  // KPI 5: REI — Resubmission Efficiency Index (formerly KREI; same engine, recalibrated
+  // Timeliness sub-score — see kreiScores())
+  const rei = kreiScores(p);
 
-  // KPI 8: CCR — Comment Close Rate (totalClosed / totalRaised across all review stages)
-  // M7: sourced from the doc register (docList), same source KREI's Correct Closure
-  // component uses — previously summed from reviewEvents instead, an independently
-  // user-editable figure that could (and did) disagree with KREI's on identical comments.
-  let ccrRaised = 0, ccrClosed = 0;
-  PKG.forEach(({key}) => {
-    (p.stageDocs?.[key]?.docList || []).forEach(d => {
-      if (!d.enabled) return;
-      ccrRaised += d.commentsRaised || 0;
-      ccrClosed += d.commentsClosed || 0;
-    });
+  // KPI 6: Signature Collection Timeliness — package-completion agreement date (KSIADC/
+  // project owner acceptance) → GACA submission milestone actual date. Already computed
+  // for the Portfolio Schedule's "Signature Period" sub-rows (buildSigPeriodRow) — reused
+  // here as its own KPI rather than duplicated.
+  const SIG_PAIRS = [
+    { key:'gaca_design_submission',        label:'Design'        },
+    { key:'gaca_commissioning_submission', label:'Commissioning' },
+  ];
+  const sigRows = [];
+  SIG_PAIRS.forEach(({key, label}) => {
+    const fromDate = p.stageDocs?.[key]?.projectOwnerAcceptance || null;
+    const toDate   = p.milestones?.[key]?.actual || null;
+    if (!fromDate || !toDate) return;
+    const days = workingDaysKSA(fromDate, toDate);
+    if (days !== null && days >= 0) sigRows.push({ label, fromDate, toDate, days });
   });
-  const ccr = ccrRaised > 0 ? Math.round((ccrClosed / ccrRaised) * 100) : null;
+  const sigPeriod = {
+    avg: sigRows.length ? Math.round(sigRows.reduce((a,b)=>a+b.days,0)/sigRows.length) : null,
+    rows: sigRows,
+  };
 
-  // KPI 9: CDR — C/D Comment Ratio (major findings as % of all raised comments)
-  let cdrRaised = 0, cdrCD = 0;
-  PKG.forEach(({key}) => {
-    const events = p.stageDocs?.[key]?.reviewEvents || [];
-    events.forEach(ev => {
-      if (ev.type === 'response') {
-        cdrRaised += ev.commentsRaised || 0;
-        cdrCD     += (ev.classCRaised || 0) + (ev.classDRaised || 0);
-      }
-    });
-  });
-  const cdr = cdrRaised > 0 ? Math.round((cdrCD / cdrRaised) * 100) : null;
-
-  return { psqs, fscr, prrcr, krei, e2e, gacaAccRate, racRtt, ccr, cdr,
-           _ccrRaised:ccrRaised, _ccrClosed:ccrClosed, _cdrRaised:cdrRaised, _cdrCD:cdrCD };
+  return { pkgDur, revisions, gacaAccRate, rei, sigPeriod };
 }
 
 function kpiRag(val, goodT, warnT, invert) {
@@ -4911,25 +4894,82 @@ function saveKPISettings() {
   lsSet(KPI_SETTINGS_KEY, kpiSettings);
   setBackupDirty(true);
 }
-function getKPIS(num, field) {
+// P21: subKey is only used by KPI 1 (Construction/OPS carry independent thresholds — see
+// KPI_DEFAULTS[1].sub). Every other KPI ignores it and behaves exactly as before.
+function getKPIS(num, field, subKey) {
+  if (subKey) {
+    const ov = kpiSettings[num]?.sub?.[subKey];
+    if (ov && ov[field] !== undefined) return ov[field];
+    return KPI_DEFAULTS[num].sub[subKey][field];
+  }
   const ov = kpiSettings[num];
   if (ov && ov[field] !== undefined) return ov[field];
   return KPI_DEFAULTS[num][field];
 }
-function updateKPISetting(num, field, rawVal) {
-  const def = KPI_DEFAULTS[num];
+function updateKPISetting(num, field, rawVal, subKey) {
   let val = field === 'invert' ? (rawVal === 'true' || rawVal === true) : parseFloat(rawVal);
   if (field !== 'invert' && isNaN(val)) return;
-  if (!kpiSettings[num]) kpiSettings[num] = {};
-  kpiSettings[num][field] = val;
+  if (subKey) {
+    if (!kpiSettings[num]) kpiSettings[num] = {};
+    if (!kpiSettings[num].sub) kpiSettings[num].sub = {};
+    if (!kpiSettings[num].sub[subKey]) kpiSettings[num].sub[subKey] = {};
+    kpiSettings[num].sub[subKey][field] = val;
+  } else {
+    if (!kpiSettings[num]) kpiSettings[num] = {};
+    kpiSettings[num][field] = val;
+  }
   saveKPISettings();
   // re-render KPI scorecard
   const p = state.projects.find(x => x.id === state.selectedId);
   if (p && ovSubTab === 'kpis') setOvSubTab('kpis');
 }
 
+/* ── Portfolio Review Log (P21, KPI 2) ────────────────────────────────────
+   Masterplan updates / Project Concurrence / Concept Plan review is a portfolio/program-
+   level concern per the owner, not tied to any one project — so it is deliberately NOT a
+   stageDocs entry. A "round" is one portfolio document provided by KSIADC/the portfolio
+   team and RAC AIMO's response to it (no CRS upload — the deck's scope here is simply the
+   submitted/responded date pair per round). */
+function loadPortfolioReviews() {
+  try {
+    const d = JSON.parse(localStorage.getItem(PORTFOLIO_KEY));
+    if (d && typeof d === 'object' && Array.isArray(d.rounds)) { portfolioReviews = d; return; }
+  } catch(e) {}
+  if (!portfolioReviews || !Array.isArray(portfolioReviews.rounds)) portfolioReviews = { rounds: [] };
+}
+function savePortfolioReviews() { lsSet(PORTFOLIO_KEY, portfolioReviews); setBackupDirty(true); }
+// KPI 2 is scored as the SLOWEST round (max working days to feedback), per the deck's "Maximum
+// duration until detailed feedback is provided" — unlike KPI 1 (sum) or KPI 3/5 (average).
+function calcPortfolioKPI() {
+  const rows = (portfolioReviews.rounds || [])
+    .filter(r => r.dateProvided && r.dateResponded)
+    .map(r => ({ ...r, days: workingDaysKSA(r.dateProvided, r.dateResponded) }))
+    .filter(r => r.days !== null && r.days >= 0);
+  const max = rows.length ? Math.max(...rows.map(r => r.days)) : null;
+  return { max, rows };
+}
+function addPortfolioRound() {
+  if (!portfolioReviews.rounds) portfolioReviews.rounds = [];
+  portfolioReviews.rounds.push({ id: 'pr_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    title: '', dateProvided: '', dateResponded: '', notes: '' });
+  savePortfolioReviews();
+  renderProjectDetail();
+}
+function updatePortfolioRound(id, field, value) {
+  const r = (portfolioReviews.rounds || []).find(x => x.id === id);
+  if (!r) return;
+  r[field] = value;
+  savePortfolioReviews();
+}
+function deletePortfolioRound(id) {
+  portfolioReviews.rounds = (portfolioReviews.rounds || []).filter(x => x.id !== id);
+  savePortfolioReviews();
+  renderProjectDetail();
+}
+
 function buildKPIScorecard(p) {
   const k = calcKPIs(p);
+  const pk = calcPortfolioKPI(); // KPI 2 — portfolio-wide, not project-scoped
 
   function card(num, name, valStr, ragCls, target, noDataMsg, subLine) {
     const hasDot = ragCls !== 'none';
@@ -4947,21 +4987,36 @@ function buildKPIScorecard(p) {
     </div>`;
   }
 
-  const r1 = kpiRag(k.psqs,             getKPIS(1,'goodT'), getKPIS(1,'warnT'), getKPIS(1,'invert'));
-  const r2 = kpiRag(k.fscr,             getKPIS(2,'goodT'), getKPIS(2,'warnT'), getKPIS(2,'invert'));
-  const r3 = kpiRag(k.prrcr.avgCycles,  getKPIS(3,'goodT'), getKPIS(3,'warnT'), getKPIS(3,'invert'));
-  const r4 = kpiRag(k.krei.total,       getKPIS(4,'goodT'), getKPIS(4,'warnT'), getKPIS(4,'invert'));
-  const r5 = kpiRag(k.e2e,              getKPIS(5,'goodT'), getKPIS(5,'warnT'), getKPIS(5,'invert'));
-  const r6 = kpiRag(k.gacaAccRate,      getKPIS(6,'goodT'), getKPIS(6,'warnT'), getKPIS(6,'invert'));
-  const r7 = kpiRag(k.racRtt,           getKPIS(7,'goodT'), getKPIS(7,'warnT'), getKPIS(7,'invert'));
-  const r8 = kpiRag(k.ccr,              getKPIS(8,'goodT'), getKPIS(8,'warnT'), getKPIS(8,'invert'));
-  const r9 = kpiRag(k.cdr,              getKPIS(9,'goodT'), getKPIS(9,'warnT'), getKPIS(9,'invert'));
+  // Worst-of-two, for KPI 1's Construction/OPS sub-thresholds
+  const RAG_ORDER = { red:3, amber:2, green:1, none:0 };
+  const worstRag = (...rs) => rs.reduce((a,b) => RAG_ORDER[b] > RAG_ORDER[a] ? b : a, 'none');
 
-  const prrcrSub = k.prrcr.rejPct !== null
-    ? `${k.prrcr.rejPct}% rejection · ${k.prrcr.criticalC} critical (C)`
+  const rConstr = k.pkgDur.constructionTotal !== null
+    ? kpiRag(k.pkgDur.constructionTotal, getKPIS(1,'goodT','construction'), getKPIS(1,'warnT','construction'), getKPIS(1,'invert','construction')) : 'none';
+  const rOps = k.pkgDur.opsTotal !== null
+    ? kpiRag(k.pkgDur.opsTotal, getKPIS(1,'goodT','ops'), getKPIS(1,'warnT','ops'), getKPIS(1,'invert','ops')) : 'none';
+  const r1 = worstRag(rConstr, rOps);
+  const r2 = kpiRag(pk.max,              getKPIS(2,'goodT'), getKPIS(2,'warnT'), getKPIS(2,'invert'));
+  const r3 = kpiRag(k.revisions.avgCycles, getKPIS(3,'goodT'), getKPIS(3,'warnT'), getKPIS(3,'invert'));
+  const r4 = kpiRag(k.gacaAccRate,       getKPIS(4,'goodT'), getKPIS(4,'warnT'), getKPIS(4,'invert'));
+  const r5 = kpiRag(k.rei.total,         getKPIS(5,'goodT'), getKPIS(5,'warnT'), getKPIS(5,'invert'));
+  const r6 = kpiRag(k.sigPeriod.avg,     getKPIS(6,'goodT'), getKPIS(6,'warnT'), getKPIS(6,'invert'));
+
+  const val1 = (k.pkgDur.constructionTotal===null && k.pkgDur.opsTotal===null) ? '—' :
+    [k.pkgDur.constructionTotal!==null?`${k.pkgDur.constructionTotal} wd (Constr.)`:null,
+     k.pkgDur.opsTotal!==null?`${k.pkgDur.opsTotal} wd (OPS)`:null].filter(Boolean).join(' · ');
+  const sub1 = (k.pkgDur.constructionCycles || k.pkgDur.opsCycles)
+    ? `${k.pkgDur.constructionCycles} review cycle(s) Constr. · ${k.pkgDur.opsCycles} review cycle(s) OPS` : null;
+  const tgt1 = `≤ ${getKPIS(1,'goodT','construction')}${getKPIS(1,'unit','construction')} Constr. · ≤ ${getKPIS(1,'goodT','ops')}${getKPIS(1,'unit','ops')} OPS`;
+
+  const revSub = k.revisions.rejPct !== null
+    ? `${k.revisions.rejPct}% rejection · ${k.revisions.criticalC} critical (C)`
     : null;
 
-  // Build target strings from live settings
+  const sigSub = k.sigPeriod.rows.length
+    ? k.sigPeriod.rows.map(r => `${r.label}: ${r.days} wd`).join(' · ') : null;
+
+  // Build target strings from live settings (KPIs 2–6 — single threshold each)
   const tgt = num => {
     // L6: arrow direction must respect an overridden invert setting, same as the threshold
     // value itself — was reading KPI_DEFAULTS[num].invert (the hardcoded default) instead of
@@ -4979,7 +5034,7 @@ function buildKPIScorecard(p) {
       <span class="kpi-settings-caret" style="font-size:13px;color:var(--text-3);">▾</span>
     </div>
     <div>
-      <p style="font-size:12px;color:var(--text-2);margin:0 0 12px;">These thresholds are global — they apply across all projects. Green = On Target · Amber = Caution · Red = Below Target.</p>
+      <p style="font-size:12px;color:var(--text-2);margin:0 0 12px;">These thresholds are global — they apply across all projects (KPI 2's applies portfolio-wide). Green = On Target · Amber = Caution · Red = Below Target.</p>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
           <tr style="border-bottom:2px solid var(--border);">
@@ -4992,7 +5047,27 @@ function buildKPIScorecard(p) {
           </tr>
         </thead>
         <tbody>
-          ${[1,2,3,4,5,6,7,8,9].map(n => {
+          ${['construction','ops'].map(sk => {
+            const d = KPI_DEFAULTS[1].sub[sk];
+            const g = getKPIS(1,'goodT',sk), w = getKPIS(1,'warnT',sk), inv = getKPIS(1,'invert',sk);
+            return `<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">1</td>
+              <td style="padding:6px 8px;color:var(--text-1);">${d.label}</td>
+              <td style="padding:6px 8px;text-align:center;color:var(--text-2);">${d.unit.trim()}</td>
+              <td style="padding:6px 8px;text-align:center;">
+                <input type="number" step="0.5" value="${g}" min="0"
+                  style="width:60px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);color:var(--text-1);font-family:inherit;"
+                  onchange="updateKPISetting(1,'goodT',this.value,'${sk}')">
+              </td>
+              <td style="padding:6px 8px;text-align:center;">
+                <input type="number" step="0.5" value="${w}" min="0"
+                  style="width:60px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);color:var(--text-1);font-family:inherit;"
+                  onchange="updateKPISetting(1,'warnT',this.value,'${sk}')">
+              </td>
+              <td style="padding:6px 8px;text-align:center;color:var(--text-3);">${inv ? '↓ Lower is better' : '↑ Higher is better'}</td>
+            </tr>`;
+          }).join('')}
+          ${[2,3,4,5,6].map(n => {
             const d = KPI_DEFAULTS[n];
             const g = getKPIS(n,'goodT'), w = getKPIS(n,'warnT'), inv = getKPIS(n,'invert');
             return `<tr style="border-bottom:1px solid var(--border);">
@@ -5037,57 +5112,39 @@ function buildKPIScorecard(p) {
         <tbody style="line-height:1.5;">
           <tr style="border-bottom:1px solid var(--border);">
             <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">1</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">PSQS</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Quality of each package submission based on C/D comments raised per document.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Σ docPts × (1 − openCD/raised) · Document Registry</td>
+            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">Review Duration</td>
+            <td style="padding:6px 8px;color:var(--text-2);">Total time RAC AIMO/GACA review takes for Construction and OPS packages.</td>
+            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Σ working days (submission→response) · Design/Comm. Pkg Review events</td>
           </tr>
           <tr style="border-bottom:1px solid var(--border);">
             <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">2</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">FSCR</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Whether first submissions included all required documents (no missing SMS or drawings).</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">% of first events with 0 missing docs · Submission events</td>
+            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">Masterplan/Concept Plan Review</td>
+            <td style="padding:6px 8px;color:var(--text-2);">Slowest turnaround on a portfolio-level document review round (Masterplan, Concurrence, Concept Plan). Portfolio-wide, not per-project.</td>
+            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Max(working days provided→responded) · Portfolio Review Log</td>
           </tr>
           <tr style="border-bottom:1px solid var(--border);">
             <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">3</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">PRRCR</td>
-            <td style="padding:6px 8px;color:var(--text-2);">How many review cycles a package goes through before approval; higher = more rework.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Total events ÷ stages with events · Review cycle log</td>
+            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">Revisions to Acceptance</td>
+            <td style="padding:6px 8px;color:var(--text-2);">How many submission cycles a package goes through before acceptance; higher = more rework.</td>
+            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Avg submission count per stage · Review cycle log</td>
           </tr>
           <tr style="border-bottom:1px solid var(--border);">
             <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">4</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">KREI</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Efficiency of re-submissions: speed of response, comment resolution, and cycle reduction.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Weighted score (A+B+C+D) · Review event dates + CRS</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">5</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">E2E-TRS</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Total calendar days from package submission to GACA approval, averaged across all packages.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">GACA approval date − first submission date · GACA log</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">6</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">GACA Acc. Rate</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Share of GACA submission rounds that resulted in acceptance (not return or rejection).</td>
+            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">GACA Acceptance Rate</td>
+            <td style="padding:6px 8px;color:var(--text-2);">Share of GACA submission rounds accepted on submission.</td>
             <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Accepted rounds ÷ total rounds · GACA submission log</td>
           </tr>
           <tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">7</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">RAC-RTT</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Working days from RAC receipt of a submission to issuing its review response.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Response date − submission date (excl. weekends) · Events</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">8</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">CCR</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Proportion of all raised comments that have been formally closed across all packages.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Closed comments ÷ raised comments · CRS import totals</td>
+            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">5</td>
+            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">REI</td>
+            <td style="padding:6px 8px;color:var(--text-2);">Resubmission Efficiency Index — speed of response, comment resolution, and repeat-comment rate.</td>
+            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">Timeliness(40) + Closure(40) + Repeat penalty(20) · Review events + CRS</td>
           </tr>
           <tr>
-            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">9</td>
-            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">CDR</td>
-            <td style="padding:6px 8px;color:var(--text-2);">Fraction of total comments that are classified as major findings (Class C or D); lower = better quality.</td>
-            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">(C + D comments) ÷ total comments · CRS response events</td>
+            <td style="padding:6px 8px;color:var(--text-3);font-weight:700;">6</td>
+            <td style="padding:6px 8px;font-weight:600;color:var(--text-1);">Signature Collection</td>
+            <td style="padding:6px 8px;color:var(--text-2);">Time to collect all required signatures after package-completion agreement, before GACA submission.</td>
+            <td style="padding:6px 8px;color:var(--text-2);font-family:monospace;">GACA submission date − package-completion acceptance date · Milestones</td>
           </tr>
         </tbody>
       </table>
@@ -5096,32 +5153,23 @@ function buildKPIScorecard(p) {
 
   return `
   <div class="info-panel" style="padding:18px 20px;margin-bottom:14px;">
-    <div class="info-panel-title" style="margin-bottom:14px;">MOU KPI Dashboard — KPIs 1&#8211;9</div>
-    <div class="kpi-grid-4">
-      ${card(1,'Package Submission Quality Score',k.psqs!==null?k.psqs+'/100':'—',r1,tgt(1),
-        k.psqs===null?'Configure Document Registry and import CRS to enable scoring':null,null)}
-      ${card(2,'First Submission Completeness Rate',k.fscr!==null?k.fscr+'%':'—',r2,tgt(2)+' · 0% missing SMS or drawings',
-        k.fscr===null?'No submission events logged yet':null,null)}
-      ${card(3,'Package Rejection &amp; Rework Cycle Rate',k.prrcr.avgCycles!==null?k.prrcr.avgCycles+' cycles':'—',r3,tgt(3)+' · ≤ 15% rejection',
-        k.prrcr.avgCycles===null?'No submission cycles recorded yet':null,prrcrSub)}
-      ${card(4,'KREI — Resubmission Efficiency Index',k.krei.total!==null?k.krei.total+' / 100':'—',r4,tgt(4),
-        k.krei.total===null?'Log review events &amp; response dates to calculate':null,null)}
+    <div class="info-panel-title" style="margin-bottom:14px;">AIMO Process KPI Dashboard — KPIs 1&#8211;6</div>
+    <div class="kpi-grid-3">
+      ${card(1,'Document Review Duration',val1,r1,tgt1,
+        (k.pkgDur.constructionTotal===null && k.pkgDur.opsTotal===null)?'Requires Submission + Response events with dates in the Design/Commissioning Package Review tabs':null,sub1)}
+      ${card(2,'Masterplan / Concept Plan Review (Portfolio-wide)',pk.max!==null?pk.max+' wd (slowest round)':'—',r2,tgt(2),
+        pk.rows.length===0?'No portfolio review rounds logged yet — open this card to add one':null,
+        pk.rows.length?`${pk.rows.length} round(s) logged`:null)}
+      ${card(3,'Revisions to Acceptance',k.revisions.avgCycles!==null?k.revisions.avgCycles+' revisions avg':'—',r3,tgt(3)+' · ≤ 15% rejection',
+        k.revisions.avgCycles===null?'No submission cycles recorded yet':null,revSub)}
     </div>
     <div class="kpi-grid-3">
-      ${card(5,'End-to-End Regulatory Submission Time',k.e2e!==null?k.e2e+' days avg':'—',r5,tgt(5)+' total (KSIADC ≤15 · RAC ≤15)',
-        k.e2e===null?'Requires review events + GACA submission log':null,null)}
-      ${card(6,'GACA Submission Acceptance Rate',k.gacaAccRate!==null?k.gacaAccRate+'%':'—',r6,tgt(6),
+      ${card(4,'GACA Submission Acceptance Rate',k.gacaAccRate!==null?k.gacaAccRate+'%':'—',r4,tgt(4),
         k.gacaAccRate===null?'Mark rounds as Accepted in GACA submission tabs':null,null)}
-      ${card(7,'RAC-AIMO Review Turnaround Time',k.racRtt!==null?k.racRtt+' days avg':'—',r7,tgt(7)+' business days',
-        k.racRtt===null?'Requires Submission + Response events with dates':null,null)}
-    </div>
-    <div class="kpi-grid-2">
-      ${card(8,'Comment Close Rate',k.ccr!==null?k.ccr+'%':'—',r8,tgt(8),
-        k.ccr===null?'Import CRS on response events to track comment counts':null,
-        k.ccr!==null?`${k._ccrClosed} of ${k._ccrRaised} comments closed`:null)}
-      ${card(9,'C/D Major Finding Ratio',k.cdr!==null?k.cdr+'%':'—',r9,tgt(9)+' of comments',
-        k.cdr===null?'Requires C/D counts from CRS imports on response events':null,
-        k.cdr!==null?`${k._cdrCD} major findings (C/D) of ${k._cdrRaised} total`:null)}
+      ${card(5,'Resubmission Efficiency Index (REI)',k.rei.total!==null?k.rei.total+' / 100':'—',r5,tgt(5),
+        k.rei.total===null?'Log review events &amp; response dates to calculate':null,null)}
+      ${card(6,'Signature Collection Timeliness',k.sigPeriod.avg!==null?k.sigPeriod.avg+' wd avg':'—',r6,tgt(6),
+        k.sigPeriod.avg===null?'Requires a package-completion acceptance date and a GACA submission date':null,sigSub)}
     </div>
   </div>
   ${settingsHTML}
@@ -5129,18 +5177,24 @@ function buildKPIScorecard(p) {
 }
 
 /* Portfolio RAG strip helper */
+// P21: KPI 2 (Masterplan/Concept Plan review) is portfolio-wide, not this project's own —
+// excluded here on purpose so a project's health strip only reflects KPIs that are actually
+// about it. KPI 1 counts once (worst of its Construction/OPS sub-scores), matching the
+// scorecard card's own RAG.
 function projectKPIHealth(p) {
   const k = calcKPIs(p);
+  const rConstr = k.pkgDur.constructionTotal !== null
+    ? kpiRag(k.pkgDur.constructionTotal, getKPIS(1,'goodT','construction'), getKPIS(1,'warnT','construction'), getKPIS(1,'invert','construction')) : 'none';
+  const rOps = k.pkgDur.opsTotal !== null
+    ? kpiRag(k.pkgDur.opsTotal, getKPIS(1,'goodT','ops'), getKPIS(1,'warnT','ops'), getKPIS(1,'invert','ops')) : 'none';
+  const RAG_ORDER = { red:3, amber:2, green:1, none:0 };
+  const r1 = [rConstr, rOps].reduce((a,b) => RAG_ORDER[b] > RAG_ORDER[a] ? b : a, 'none');
   const rags = [
-    kpiRag(k.psqs,            getKPIS(1,'goodT'), getKPIS(1,'warnT'), getKPIS(1,'invert')),
-    kpiRag(k.fscr,            getKPIS(2,'goodT'), getKPIS(2,'warnT'), getKPIS(2,'invert')),
-    kpiRag(k.prrcr.avgCycles, getKPIS(3,'goodT'), getKPIS(3,'warnT'), getKPIS(3,'invert')),
-    kpiRag(k.krei.total,      getKPIS(4,'goodT'), getKPIS(4,'warnT'), getKPIS(4,'invert')),
-    kpiRag(k.e2e,             getKPIS(5,'goodT'), getKPIS(5,'warnT'), getKPIS(5,'invert')),
-    kpiRag(k.gacaAccRate,     getKPIS(6,'goodT'), getKPIS(6,'warnT'), getKPIS(6,'invert')),
-    kpiRag(k.racRtt,          getKPIS(7,'goodT'), getKPIS(7,'warnT'), getKPIS(7,'invert')),
-    kpiRag(k.ccr,             getKPIS(8,'goodT'), getKPIS(8,'warnT'), getKPIS(8,'invert')),
-    kpiRag(k.cdr,             getKPIS(9,'goodT'), getKPIS(9,'warnT'), getKPIS(9,'invert')),
+    r1,
+    kpiRag(k.revisions.avgCycles, getKPIS(3,'goodT'), getKPIS(3,'warnT'), getKPIS(3,'invert')),
+    kpiRag(k.gacaAccRate,         getKPIS(4,'goodT'), getKPIS(4,'warnT'), getKPIS(4,'invert')),
+    kpiRag(k.rei.total,           getKPIS(5,'goodT'), getKPIS(5,'warnT'), getKPIS(5,'invert')),
+    kpiRag(k.sigPeriod.avg,       getKPIS(6,'goodT'), getKPIS(6,'warnT'), getKPIS(6,'invert')),
   ];
   const withData = rags.filter(r => r !== 'none');
   if (!withData.length) return null; // no KPI data yet
@@ -5157,18 +5211,19 @@ function openKPIDetail(num) {
   const p = state.projects.find(x => x.id === state.selectedId); if (!p) return;
   const k = calcKPIs(p);
   const NAMES = {
-    1:'Package Submission Quality Score (PSQS)',
-    2:'First Submission Completeness Rate (FSCR)',
-    3:'Package Rejection & Rework Cycle Rate (PRRCR)',
-    4:'KREI — Resubmission Efficiency Index',
-    5:'End-to-End Regulatory Submission Time (E2E-TRS)',
-    6:'GACA Submission Acceptance Rate',
-    7:'RAC-AIMO Review Turnaround Time (RAC-RTT)',
-    8:'Comment Close Rate (CCR)',
-    9:'C/D Major Finding Ratio (CDR)',
+    1:'Document Review Duration — Construction & OPS',
+    2:'Masterplan / Concurrence / Concept Plan Review',
+    3:'Revisions to Acceptance',
+    4:'GACA Submission Acceptance Rate',
+    5:'Resubmission Efficiency Index (REI)',
+    6:'Signature Collection Timeliness',
   };
   document.getElementById('kpiDetailTitle').textContent = `KPI ${num} · ${NAMES[num]}`;
-  document.getElementById('kpiDetailSub').textContent = 'Breakdown and underlying data — ' + p.name;
+  // KPI 2 is portfolio-wide, not scoped to the selected project — say so rather than
+  // implying its data belongs to p.
+  document.getElementById('kpiDetailSub').textContent = num === 2
+    ? 'Breakdown and underlying data — Portfolio-wide (all projects)'
+    : 'Breakdown and underlying data — ' + p.name;
   document.getElementById('kpiDetailBody').innerHTML = buildKPIDetailHTML(num, p, k);
   document.getElementById('kpiDetailOverlay').classList.remove('hidden');
 }
@@ -5206,83 +5261,87 @@ function buildKPIDetailHTML(num, p, k) {
   // KPI-detail section has a ready wrapper. KPI detail panes render via tableWrap.
   const section = (title, html) => _p8(title, html);
 
-  // ── KPI 1: PSQS ───────────────────────────────────────────────────────────
+  // ── KPI 1: Document Review Duration — Construction & OPS (formerly RAC-RTT) ─
+  // SUM (not average) of working days per package type, per the deck. Construction = Design
+  // Package Review, OPS = Commissioning Package Review, per the owner's explicit mapping.
   if (num === 1) {
+    const SUB_PKG = [
+      { key:'gaca_package_review',           label:'Construction (Design Pkg Review)', sub:'construction' },
+      { key:'gaca_commissioning_submission', label:'OPS (Commissioning Pkg Review)',   sub:'ops'          },
+    ];
     let rows = '';
-    let hasAny = false;
-    PKG.forEach(({key, label}) => {
-      const registry = p.stageDocs?.[key]?.documentRegistry || [];
-      const allEvents = p.stageDocs?.[key]?.reviewEvents || [];
-      const firstRespI = allEvents.findIndex(e => e.type === 'response');
-      allEvents.forEach((ev, i) => {
-        if (ev.type !== 'response') return;
-        hasAny = true;
-        const isFirst = i === firstRespI;
-        const regScore = isFirst ? calcPSQSFromRegistry(ev, registry) : null;
-        const legacyScored = isFirst && (ev.psqsOps != null || ev.psqsEng != null || ev.psqsSms != null);
-        const ops = regScore ? regScore.ops : (legacyScored ? ev.psqsOps||0 : null);
-        const eng = regScore ? regScore.eng : (legacyScored ? ev.psqsEng||0 : null);
-        const sms = regScore ? regScore.sms : (legacyScored ? ev.psqsSms||0 : null);
-        const tot = regScore ? regScore.total : (legacyScored ? (ev.psqsOps||0)+(ev.psqsEng||0)+(ev.psqsSms||0) : null);
-        const r = tot !== null ? kpiRag(tot, getKPIS(1,'goodT'), getKPIS(1,'warnT'), getKPIS(1,'invert')) : 'none';
-        const fmt = v => v !== null ? v : '<span style="color:var(--text-3);">—</span>';
-        const firstBadge = isFirst ? '' : `<span style="font-size:9px;color:var(--text-3);margin-left:4px;">(resubmission)</span>`;
-        rows += `<tr style="${!isFirst?'opacity:.55;':''}">
-          <td style="${tdS}">${esc(label)}${firstBadge}</td>
-          <td style="${tdS}color:var(--text-3);">${ev.date||'—'}</td>
-          <td style="${tdS}text-align:right;">${isFirst?fmt(ops):'—'}</td>
-          <td style="${tdS}text-align:right;">${isFirst?fmt(eng):'—'}</td>
-          <td style="${tdS}text-align:right;">${isFirst?fmt(sms):'—'}</td>
-          <td style="${tdS}text-align:right;font-weight:700;">${isFirst?fmt(tot):'<span style="color:var(--text-3);font-size:9px;">not scored</span>'}</td>
-          <td style="${tdS}text-align:right;">${isFirst?ragPill(r):''}</td>
-        </tr>`;
-      });
-    });
-    const avg = k.psqs !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
-      <span style="font-size:13px;color:var(--text-2);">PSQS (first submission):</span>
-      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(k.psqs,getKPIS(1,'goodT'),getKPIS(1,'warnT'),getKPIS(1,'invert')))};">${k.psqs}/100</span>
-      ${ragPill(kpiRag(k.psqs,getKPIS(1,'goodT'),getKPIS(1,'warnT'),getKPIS(1,'invert')))}
-    </div>` : '';
-    return avg + tableWrap(
-      [{h:'Stage'},{h:'Response Date'},{h:'Ops',right:true},{h:'Eng',right:true},{h:'SMS',right:true},{h:'Total /100',right:true},{h:'Status',right:true}],
-      rows,
-      !hasAny ? 'No RAC response events recorded yet. Log responses in the Design/Commissioning Package Review tabs.' :
-      'Scores are entered on each RAC Response event in the Package Review Cycles section.'
-    );
-  }
-
-  // ── KPI 2: FSCR ───────────────────────────────────────────────────────────
-  if (num === 2) {
-    let rows = '';
-    PKG.forEach(({key, label}) => {
-      const events = p.stageDocs?.[key]?.reviewEvents || [];
-      const first = events.find(e => e.type==='submission' && !e.isNonGaca);
-      if (!first) {
-        rows += `<tr><td style="${tdS}">${esc(label)}</td><td colspan="3" style="${tdS}color:var(--text-3);">No submission events yet</td></tr>`;
-        return;
+    SUB_PKG.forEach(({key, label, sub}) => {
+      const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
+      let stageTotal = 0, hasAny = false;
+      for (let i=0; i<events.length-1; i++) {
+        if (events[i].type==='submission' && events[i+1].type==='response'
+            && events[i].date && events[i+1].date) {
+          const d = workingDaysKSA(events[i].date, events[i+1].date);
+          if (d !== null && d >= 0) {
+            hasAny = true; stageTotal += d;
+            const r = kpiRag(d, getKPIS(1,'goodT',sub), getKPIS(1,'warnT',sub), getKPIS(1,'invert',sub));
+            rows += `<tr>
+              <td style="${tdS}">${esc(label)}</td>
+              <td style="${tdS}color:var(--text-3);">${events[i].date}</td>
+              <td style="${tdS}color:var(--text-3);">${events[i+1].date}</td>
+              <td style="${tdS}text-align:right;font-weight:700;">${d} wd</td>
+              <td style="${tdS}text-align:right;">${ragPill(r)}</td>
+            </tr>`;
+          }
+        }
       }
-      const complete = !first.isPartial;
-      const r = kpiRag(complete?100:0, getKPIS(2,'goodT'), getKPIS(2,'warnT'), getKPIS(2,'invert'));
-      rows += `<tr>
-        <td style="${tdS}">${esc(label)}</td>
-        <td style="${tdS}color:var(--text-3);">${first.date||'—'}</td>
-        <td style="${tdS}text-align:center;">${first.isPartial?'<span style="color:#c0392b;font-weight:700;">Partial</span>':'<span style="color:#1a7a4a;font-weight:700;">Complete</span>'}</td>
-        <td style="${tdS}text-align:right;">${ragPill(r)}</td>
-      </tr>`;
+      if (hasAny) {
+        const rTot = kpiRag(stageTotal, getKPIS(1,'goodT',sub), getKPIS(1,'warnT',sub), getKPIS(1,'invert',sub));
+        rows += `<tr style="background:var(--bg-elevated);">
+          <td style="${tdS}font-weight:700;" colspan="3">${esc(label)} — Total</td>
+          <td style="${tdS}text-align:right;font-weight:800;">${stageTotal} wd</td>
+          <td style="${tdS}text-align:right;">${ragPill(rTot)}</td>
+        </tr>`;
+      }
     });
-    const overall = k.fscr !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
-      <span style="font-size:13px;color:var(--text-2);">First Submission Completeness Rate:</span>
-      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(k.fscr,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))};">${k.fscr}%</span>
-      ${ragPill(kpiRag(k.fscr,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))}
-    </div>` : '';
-    return overall + tableWrap(
-      [{h:'Stage'},{h:'First Submission Date'},{h:'Completeness'},{h:'Status',right:true}],
+    return tableWrap(
+      [{h:'Package Type'},{h:'Submission Date'},{h:'Response Date'},{h:'Working Days',right:true},{h:'Status',right:true}],
       rows,
-      'A submission is "Complete" when the Partial checkbox is unchecked on the first submission event. Mark a submission as Partial when not all required document categories were included.'
+      'Working days are calculated excluding Friday/Saturday (KSA weekend). Targets: ≤ ' + getKPIS(1,'goodT','construction') + ' wd total for Construction packages, ≤ ' + getKPIS(1,'goodT','ops') + ' wd total for OPS packages — summed across all review cycles on the project, not averaged.'
     );
   }
 
-  // ── KPI 3: PRRCR ──────────────────────────────────────────────────────────
+  // ── KPI 2: Masterplan / Concurrence / Concept Plan Review (Portfolio-wide) ─
+  // Not scoped to `p` — a portfolio-level submission/response log, editable from here.
+  if (num === 2) {
+    const pk = calcPortfolioKPI();
+    const rounds = portfolioReviews.rounds || [];
+    const rowsHtml = rounds.map(r => {
+      const days = (r.dateProvided && r.dateResponded) ? workingDaysKSA(r.dateProvided, r.dateResponded) : null;
+      const rag = days !== null ? kpiRag(days, getKPIS(2,'goodT'), getKPIS(2,'warnT'), getKPIS(2,'invert')) : 'none';
+      return `<tr>
+        <td style="${tdS}"><input type="text" value="${esc(r.title||'')}" placeholder="Document / round title"
+          style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--bg-card);color:var(--text-1);font-family:inherit;"
+          onchange="updatePortfolioRound('${r.id}','title',this.value)"></td>
+        <td style="${tdS}"><input type="date" value="${esc(r.dateProvided||'')}" class="krei-date-inp"
+          onchange="updatePortfolioRound('${r.id}','dateProvided',this.value);renderProjectDetail();"></td>
+        <td style="${tdS}"><input type="date" value="${esc(r.dateResponded||'')}" class="krei-date-inp"
+          onchange="updatePortfolioRound('${r.id}','dateResponded',this.value);renderProjectDetail();"></td>
+        <td style="${tdS}text-align:right;font-weight:700;">${days!==null?days+' wd':'<span style="color:var(--text-3);">—</span>'}</td>
+        <td style="${tdS}text-align:right;">${days!==null?ragPill(rag):''}</td>
+        <td style="${tdS}text-align:right;"><button class="btn btn-ghost btn-xs" onclick="deletePortfolioRound('${r.id}')" title="Delete round">✕</button></td>
+      </tr>`;
+    }).join('');
+    const overall = pk.max !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
+      <span style="font-size:13px;color:var(--text-2);">Slowest round (max working days to feedback):</span>
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(pk.max,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))};">${pk.max} wd</span>
+      ${ragPill(kpiRag(pk.max,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))}
+    </div>` : '';
+    const addBtn = `<div style="margin-bottom:10px;"><button class="btn btn-ghost btn-xs" onclick="addPortfolioRound();renderProjectDetail();">+ Add Round</button></div>`;
+    return `<div style="font-size:11px;color:var(--text-3);font-style:italic;margin-bottom:10px;">This log is shared across the whole portfolio — it is not specific to ${esc(p.name)}. Add one row per portfolio document (Masterplan update, Project Concurrence, Concept Plan) submitted for RAC AIMO review.</div>`
+      + overall + addBtn + tableWrap(
+      [{h:'Document / Round'},{h:'Date Provided'},{h:'Date Responded'},{h:'Working Days',right:true},{h:'Status',right:true},{h:'',right:true}],
+      rowsHtml,
+      'Target: ≤ ' + getKPIS(2,'goodT') + ' working days from the document being provided to detailed feedback being issued. Scored as the slowest round on record, not an average.'
+    );
+  }
+
+  // ── KPI 3: Revisions to Acceptance (formerly PRRCR) ────────────────────────
   if (num === 3) {
     let rows = '';
     PKG.forEach(({key, label}) => {
@@ -5308,49 +5367,14 @@ function buildKPIDetailHTML(num, p, k) {
       </tr>`;
     });
     return tableWrap(
-      [{h:'Stage'},{h:'Cycles',right:false},{h:'Total Raised'},{h:'D Rejections'},{h:'C Critical'}],
+      [{h:'Stage'},{h:'Revisions',right:false},{h:'Total Raised'},{h:'D Rejections'},{h:'C Critical'}],
       rows,
-      'Targets: ≤ 1.5 cycles on average · ≤ 15% rejection (D comments) · ≤ 5 critical (C comments) total.<br>Comment classifications are sourced from CRS uploads on each RAC Response event.'
+      'Target: ≤ ' + getKPIS(3,'goodT') + ' revisions on average for RAC design acceptance and GACA submissions.<br>Comment classifications are sourced from CRS uploads on each RAC Response event.'
     );
   }
 
-  // ── KPI 4: KREI ───────────────────────────────────────────────────────────
+  // ── KPI 4: GACA Submission Acceptance Rate (formerly KPI 6) ───────────────
   if (num === 4) {
-    return buildKREISection(p);
-  }
-
-  // ── KPI 5: E2E-TRS ────────────────────────────────────────────────────────
-  if (num === 5) {
-    const pairs = [
-      { pkgKey:'gaca_package_review',           subKey:'gaca_design_submission',        label:'Design'        },
-      { pkgKey:'gaca_commissioning_submission',  subKey:'gaca_commissioning_acceptance', label:'Commissioning' },
-    ];
-    let rows = '';
-    pairs.forEach(({pkgKey, subKey, label}) => {
-      const events  = p.stageDocs?.[pkgKey]?.reviewEvents || [];
-      const firstSub = events.find(e => e.type==='submission' && !e.isNonGaca && !e.isPartial && e.date);
-      const log     = p.stageDocs?.[subKey]?.submissionLog || [];
-      const gacaFirst = log.filter(r=>r.dateSubmitted).sort((a,b)=>new Date(a.dateSubmitted)-new Date(b.dateSubmitted))[0];
-      const days    = firstSub?.date && gacaFirst?.dateSubmitted
-        ? Math.round((new Date(gacaFirst.dateSubmitted)-new Date(firstSub.date))/86400000) : null;
-      const r = days!=null ? kpiRag(days,getKPIS(5,'goodT'),getKPIS(5,'warnT'),getKPIS(5,'invert')) : 'none';
-      rows += `<tr>
-        <td style="${tdS}">${label}</td>
-        <td style="${tdS}color:var(--text-3);">${firstSub?.date||'<span style="color:var(--text-3);">—</span>'}</td>
-        <td style="${tdS}color:var(--text-3);">${gacaFirst?.dateSubmitted||'<span style="color:var(--text-3);">—</span>'}</td>
-        <td style="${tdS}text-align:right;font-weight:700;">${days!=null?days+' days':'<span style="color:var(--text-3);">—</span>'}</td>
-        <td style="${tdS}text-align:right;">${ragPill(r)}</td>
-      </tr>`;
-    });
-    return tableWrap(
-      [{h:'Stage'},{h:'First KSIADC Submission'},{h:'GACA Submission Date'},{h:'Days',right:true},{h:'Status',right:true}],
-      rows,
-      'Target: ≤ 30 days total (KSIADC ≤ 15 days · RAC/AIMO ≤ 15 days).<br>Measured from first non-partial submission event to first GACA submission log entry.'
-    );
-  }
-
-  // ── KPI 6: GACA Acceptance Rate ───────────────────────────────────────────
-  if (num === 6) {
     let rows = '', total=0, accepted=0;
     GACA_SUB.forEach(({key, label}) => {
       const log = p.stageDocs?.[key]?.submissionLog || [];
@@ -5380,135 +5404,45 @@ function buildKPIDetailHTML(num, p, k) {
     });
     const overall = total > 0 ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
       <span style="font-size:13px;color:var(--text-2);">Acceptance Rate: ${accepted}/${total} rounds accepted</span>
-      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(Math.round(accepted/total*100),getKPIS(6,'goodT'),getKPIS(6,'warnT'),getKPIS(6,'invert')))};">${Math.round(accepted/total*100)}%</span>
-      ${ragPill(kpiRag(Math.round(accepted/total*100),getKPIS(6,'goodT'),getKPIS(6,'warnT'),getKPIS(6,'invert')))}
+      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(Math.round(accepted/total*100),getKPIS(4,'goodT'),getKPIS(4,'warnT'),getKPIS(4,'invert')))};">${Math.round(accepted/total*100)}%</span>
+      ${ragPill(kpiRag(Math.round(accepted/total*100),getKPIS(4,'goodT'),getKPIS(4,'warnT'),getKPIS(4,'invert')))}
     </div>` : '';
     return overall + tableWrap(
       [{h:'Stage'},{h:'Round'},{h:'Submitted to GACA'},{h:'Response Date'},{h:'Status',right:true}],
       rows,
-      'Target: ≥ 95% of packages accepted by GACA. Set the status of each round in the GACA submission tabs.'
+      'Target: ≥ ' + getKPIS(4,'goodT') + '% Excellent · below ' + getKPIS(4,'warnT') + '% is a critical gap in regulatory interpretation. Set the status of each round in the GACA submission tabs.'
     );
   }
 
-  // ── KPI 7: RAC-RTT ────────────────────────────────────────────────────────
-  if (num === 7) {
-    let rows = '', allDays = [];
-    PKG.forEach(({key, label}) => {
-      const events = sortedReviewEvents(p.stageDocs?.[key]?.reviewEvents);
-      for (let i=0; i<events.length-1; i++) {
-        if (events[i].type==='submission' && events[i+1].type==='response'
-            && events[i].date && events[i+1].date) {
-          const d = workingDaysKSA(events[i].date, events[i+1].date);
-          if (d !== null && d >= 0) {
-            allDays.push(d);
-            const r = kpiRag(d, getKPIS(7,'goodT'), getKPIS(7,'warnT'), getKPIS(7,'invert'));
-            rows += `<tr>
-              <td style="${tdS}">${esc(label)}</td>
-              <td style="${tdS}color:var(--text-3);">${events[i].date}</td>
-              <td style="${tdS}color:var(--text-3);">${events[i+1].date}</td>
-              <td style="${tdS}text-align:right;font-weight:700;">${d} days</td>
-              <td style="${tdS}text-align:right;">${ragPill(r)}</td>
-            </tr>`;
-          }
-        }
-      }
-    });
-    const avg = allDays.length ? Math.round(allDays.reduce((a,b)=>a+b,0)/allDays.length) : null;
-    const overall = avg !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
-      <span style="font-size:13px;color:var(--text-2);">Average RAC-AIMO review time:</span>
-      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(avg,getKPIS(7,'goodT'),getKPIS(7,'warnT'),getKPIS(7,'invert')))};">${avg} days</span>
-      ${ragPill(kpiRag(avg,getKPIS(7,'goodT'),getKPIS(7,'warnT'),getKPIS(7,'invert')))}
-    </div>` : '';
-    return overall + tableWrap(
-      [{h:'Stage'},{h:'Submission Date'},{h:'Response Date'},{h:'Working Days',right:true},{h:'Status',right:true}],
-      rows,
-      'Working days are calculated excluding Friday/Saturday (KSA weekend). Target: ≤ 14 working days per review cycle.'
-    );
+  // ── KPI 5: REI — Resubmission Efficiency Index (formerly KREI/KPI 4) ──────
+  if (num === 5) {
+    return buildKREISection(p);
   }
 
-  // ── KPI 8: CCR — Comment Close Rate ──────────────────────────────────────
-  if (num === 8) {
+  // ── KPI 6: Signature Collection Timeliness ────────────────────────────────
+  if (num === 6) {
+    const SIG_PAIRS = [
+      { key:'gaca_design_submission',        label:'Design'        },
+      { key:'gaca_commissioning_submission', label:'Commissioning' },
+    ];
     let rows = '';
-    PKG.forEach(({key, label}) => {
-      const events = p.stageDocs?.[key]?.reviewEvents || [];
-      events.forEach(ev => {
-        const raised  = ev.commentsRaised  || 0;
-        const closed  = ev.commentsClosed  || 0;
-        if (!raised && !closed) return;
-        const pct = raised > 0 ? Math.round((closed/raised)*100) : null;
-        rows += `<tr>
-          <td style="${tdS}">${esc(label)}</td>
-          <td style="${tdS}color:var(--text-3);">${ev.date||'—'}</td>
-          <td style="${tdS}text-align:center;">${{submission:'Submission',response:'RAC Response'}[ev.type]||ev.type}</td>
-          <td style="${tdS}text-align:right;">${raised||'—'}</td>
-          <td style="${tdS}text-align:right;">${closed||'—'}</td>
-          <td style="${tdS}text-align:right;font-weight:${pct!==null?'700':'400'};">${pct!==null?pct+'%':'<span style="color:var(--text-3);">—</span>'}</td>
-        </tr>`;
-      });
+    SIG_PAIRS.forEach(({key, label}) => {
+      const fromDate = p.stageDocs?.[key]?.projectOwnerAcceptance || null;
+      const toDate   = p.milestones?.[key]?.actual || null;
+      const days = (fromDate && toDate) ? workingDaysKSA(fromDate, toDate) : null;
+      const r = days!=null ? kpiRag(days,getKPIS(6,'goodT'),getKPIS(6,'warnT'),getKPIS(6,'invert')) : 'none';
+      rows += `<tr>
+        <td style="${tdS}">${label}</td>
+        <td style="${tdS}color:var(--text-3);">${fromDate||'<span style="color:var(--text-3);">—</span>'}</td>
+        <td style="${tdS}color:var(--text-3);">${toDate||'<span style="color:var(--text-3);">—</span>'}</td>
+        <td style="${tdS}text-align:right;font-weight:700;">${days!=null?days+' wd':'<span style="color:var(--text-3);">—</span>'}</td>
+        <td style="${tdS}text-align:right;">${ragPill(r)}</td>
+      </tr>`;
     });
-    // M7: headline total sourced from the doc register (docList), same source KREI's Correct
-    // Closure component uses — the per-event table above still shows each round's own
-    // reviewEvents-sourced counts for reference, but no longer feeds the headline % so it
-    // can't silently disagree with KREI's figure for the same underlying comments.
-    let allRaised = 0, allClosed = 0;
-    PKG.forEach(({key}) => {
-      (p.stageDocs?.[key]?.docList || []).forEach(d => {
-        if (!d.enabled) return;
-        allRaised += d.commentsRaised || 0;
-        allClosed += d.commentsClosed || 0;
-      });
-    });
-    const overall = allRaised > 0 ? Math.round((allClosed/allRaised)*100) : null;
-    const overallEl = overall !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
-      <span style="font-size:13px;color:var(--text-2);">Overall Comment Close Rate:</span>
-      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(overall,getKPIS(8,'goodT'),getKPIS(8,'warnT'),getKPIS(8,'invert')))};">${overall}%</span>
-      <span style="font-size:12px;color:var(--text-3);">${allClosed} of ${allRaised} comments resolved</span>
-      ${ragPill(kpiRag(overall,getKPIS(8,'goodT'),getKPIS(8,'warnT'),getKPIS(8,'invert')))}
-    </div>` : '';
-    return overallEl + tableWrap(
-      [{h:'Stage'},{h:'Date'},{h:'Event'},{h:'Raised',right:true},{h:'Closed',right:true},{h:'Close Rate',right:true}],
+    return tableWrap(
+      [{h:'Stage'},{h:'Package-Completion Acceptance'},{h:'GACA Submission Date'},{h:'Working Days',right:true},{h:'Status',right:true}],
       rows,
-      'Overall Comment Close Rate is sourced from the CRS document register (docList) — the same figures as the KREI scorecard\'s Correct Closure component. The table below shows each review round\'s own submitted comment counts for reference; per-row "Close Rate" is that event\'s own commentsClosed / commentsRaised, not part of the overall figure above. Target: ≥ 85% overall.'
-    );
-  }
-
-  // ── KPI 9: CDR — C/D Major Finding Ratio ─────────────────────────────────
-  if (num === 9) {
-    let rows = '', allRaised = 0, allCD = 0;
-    PKG.forEach(({key, label}) => {
-      const events = p.stageDocs?.[key]?.reviewEvents || [];
-      events.forEach(ev => {
-        if (ev.type !== 'response') return;
-        const raised  = ev.commentsRaised  || 0;
-        const cClass  = ev.classCRaised    || 0;
-        const dClass  = ev.classDRaised    || 0;
-        const cd      = cClass + dClass;
-        if (!raised && !cd) return;
-        allRaised += raised; allCD += cd;
-        const pct = raised > 0 ? Math.round((cd/raised)*100) : null;
-        const r = pct !== null ? kpiRag(pct, getKPIS(9,'goodT'), getKPIS(9,'warnT'), getKPIS(9,'invert')) : 'none';
-        rows += `<tr>
-          <td style="${tdS}">${esc(label)}</td>
-          <td style="${tdS}color:var(--text-3);">${ev.date||'—'}</td>
-          <td style="${tdS}text-align:right;">${raised||'—'}</td>
-          <td style="${tdS}text-align:right;color:${cClass>0?'#b85000':'var(--text-3)'};">${cClass||'—'}</td>
-          <td style="${tdS}text-align:right;color:${dClass>0?'#c0392b':'var(--text-3)'};">${dClass||'—'}</td>
-          <td style="${tdS}text-align:right;font-weight:700;">${cd}</td>
-          <td style="${tdS}text-align:right;">${pct!==null?ragPill(r)+` <span style="font-size:11px;margin-left:3px;">${pct}%</span>`:'<span style="color:var(--text-3);">—</span>'}</td>
-        </tr>`;
-      });
-    });
-    const overall = allRaised > 0 ? Math.round((allCD/allRaised)*100) : null;
-    const overallEl = overall !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border-radius:8px;margin-bottom:14px;">
-      <span style="font-size:13px;color:var(--text-2);">Overall C/D Major Finding Ratio:</span>
-      <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(overall,getKPIS(9,'goodT'),getKPIS(9,'warnT'),getKPIS(9,'invert')))};">${overall}%</span>
-      <span style="font-size:12px;color:var(--text-3);">${allCD} major findings of ${allRaised} total comments</span>
-      ${ragPill(kpiRag(overall,getKPIS(9,'goodT'),getKPIS(9,'warnT'),getKPIS(9,'invert')))}
-    </div>` : '';
-    return overallEl + tableWrap(
-      [{h:'Stage'},{h:'Response Date'},{h:'Total Raised',right:true},{h:'C (Critical)',right:true},{h:'D (Rejection)',right:true},{h:'C+D Total',right:true},{h:'C/D Ratio',right:true}],
-      rows,
-      'C = Critical finding requiring significant rework. D = Rejection/non-compliance. Lower ratio = higher initial package quality. Target: ≤ 25% of all comments are C or D class.'
+      'Target: ≤ ' + getKPIS(6,'goodT') + ' working days from package-completion agreement (project-owner/KSIADC acceptance) to all signatures being obtained and the package submitted to GACA. Same figures as the "Signature Period" rows in the Portfolio Schedule.'
     );
   }
 
@@ -5968,12 +5902,15 @@ function buildKREISection(p) {
     if (invert) return val <= goodThresh ? 'var-green' : val <= warnThresh ? 'var-amber' : 'var-red';
     return val >= goodThresh ? 'var-green' : val >= warnThresh ? 'var-amber' : 'var-red';
   }
+  // P21: thresholds now read from KPI 5's live settings (deck default: Excellent ≥95,
+  // Good ≥80, Not acceptable <80) instead of the old hardcoded 85/70.
+  const reiGood = getKPIS(5,'goodT'), reiWarn = getKPIS(5,'warnT');
   const clsA     = ragClass(sc.pctClosure, 90, 60, false);
   const clsB     = ragClass(sc.repeatPct,  5, 15, true);
   const clsC     = ragClass(sc.pct7, 80, 50, false);
-  const clsTotal = sc.total === null ? '' : sc.total >= 85 ? 'var-green' : sc.total >= 70 ? 'var-amber' : 'var-red';
-  const totalColor = sc.total === null ? 'var(--text-3)' : sc.total >= 85 ? '#1a7a4a' : sc.total >= 70 ? '#8a5c00' : '#c0392b';
-  const totalBg    = sc.total === null ? 'var(--bg-elevated)' : sc.total >= 85 ? '#e8f8f1' : sc.total >= 70 ? '#fff3cd' : '#fde8e8';
+  const clsTotal = sc.total === null ? '' : sc.total >= reiGood ? 'var-green' : sc.total >= reiWarn ? 'var-amber' : 'var-red';
+  const totalColor = sc.total === null ? 'var(--text-3)' : sc.total >= reiGood ? '#1a7a4a' : sc.total >= reiWarn ? '#8a5c00' : '#c0392b';
+  const totalBg    = sc.total === null ? 'var(--bg-elevated)' : sc.total >= reiGood ? '#e8f8f1' : sc.total >= reiWarn ? '#fff3cd' : '#fde8e8';
 
   function scoreCard(letter, label, score, denom, badge, target) {
     return `<div class="krei-score-card">
@@ -6064,9 +6001,9 @@ function buildKREISection(p) {
   // ── Timeliness table (C) ─────────────────────────────────────────────────
   const rsubRows = sc.rsubDetails.map((r, i) => {
     let bandTxt, bandCls;
-    if (r.days <= 7)       { bandTxt = '&#8804;7d';  bandCls = 'var-green'; }
-    else if (r.days <= 14) { bandTxt = '8&#8211;14d'; bandCls = 'var-amber'; }
-    else                   { bandTxt = '&gt;14d';    bandCls = 'var-red'; }
+    if (r.days <= 7)       { bandTxt = '&#8804;7d (40pt)';   bandCls = 'var-green'; }
+    else if (r.days <= 12) { bandTxt = '8&#8211;12d (20pt)'; bandCls = 'var-amber'; }
+    else                   { bandTxt = '&gt;12d (0pt)';      bandCls = 'var-red'; }
     return `<tr>
       <td style="padding:5px 6px;font-size:11px;color:var(--text-3);text-align:center;">${i+1}</td>
       <td style="padding:5px 6px;"><span style="background:var(--bg-elevated);border-radius:4px;padding:1px 5px;font-size:9.5px;color:var(--text-3);">${r.stageLabel}</span></td>
@@ -6084,11 +6021,11 @@ function buildKREISection(p) {
 
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div class="info-panel-title" style="margin-bottom:0;">KSIA Resubmission Efficiency Index (KREI)</div>
+      <div class="info-panel-title" style="margin-bottom:0;">Resubmission Efficiency Index (REI)</div>
       ${hasAny ? `<div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:10px;color:var(--text-3);">Total Score</span>
         <span style="font-size:18px;font-weight:800;color:${totalColor};background:${totalBg};padding:2px 10px;border-radius:8px;line-height:1.4;">${sc.total !== null ? sc.total : '&#8212;'}<span style="font-size:11px;font-weight:500;">/100</span></span>
-        ${sc.total !== null ? `<span class="ms-var-badge ${clsTotal}" style="font-size:10px;">${sc.total >= 85 ? '&#10003; Pass' : '&#10007; Below Target'}</span>` : ''}
+        ${sc.total !== null ? `<span class="ms-var-badge ${clsTotal}" style="font-size:10px;">${sc.total >= reiGood ? '&#10003; Excellent' : sc.total >= reiWarn ? 'Good' : '&#10007; Not Acceptable'}</span>` : ''}
       </div>` : ''}
     </div>
 
@@ -6096,7 +6033,7 @@ function buildKREISection(p) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
       ${scoreCard('A','Correct Closure', sc.scoreA, 40, badgeA, '&#8805;90%')}
       ${scoreCard('B','Repeat Penalty',  sc.scoreB, 20, badgeB, '&#8804;5% repeat')}
-      ${scoreCard('C','Timeliness',      sc.scoreC, 40, badgeC, '&#8805;80% in &#8804;7 days')}
+      ${scoreCard('C','Timeliness',      sc.scoreC, 40, badgeC, '&#8804;7d=40 &#183; 8&#8211;12d=20 &#183; &gt;12d=0')}
     </div>
 
     <!-- A: Data sources (doc registers) -->
@@ -7161,7 +7098,7 @@ function buildReviewCycleHTML(p, stageKey, _hideSummary=false) {
 
         if (!registry.length) {
           psqsBlock = `<div style="margin-top:6px;padding:5px 8px;background:var(--bg-elevated);border-radius:5px;border:1px solid var(--border-faint);font-size:10.5px;color:var(--text-3);">
-            <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">KPI 1 · PSQS</span>
+            <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">PSQS</span>
             — Configure the <button class="btn btn-ghost btn-xs" style="display:inline;padding:0 4px;font-size:10px;" onclick="openDocRegistry('${sk}')">Document Registry</button> to enable auto-scoring.
           </div>`;
         } else {
@@ -7194,7 +7131,7 @@ function buildReviewCycleHTML(p, stageKey, _hideSummary=false) {
           }).join('');
           psqsBlock = `<div style="margin-top:6px;padding:5px 6px;background:var(--bg-elevated);border-radius:5px;border:1px solid var(--border-faint);">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:5px;display:flex;align-items:center;gap:5px;">
-              <span>KPI 1 · PSQS Score</span>
+              <span>PSQS Score</span>
               <span id="psqs-tot-${ei}" style="font-size:10px;font-weight:800;color:${psqsRag};">${hasScore?psqsTotal+'/100':'—'}</span>
               <span ${infoTip} style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-3);font-size:8px;font-weight:800;cursor:help;font-style:italic;flex-shrink:0;letter-spacing:0;text-transform:none;">i</span>
             </div>
@@ -11186,8 +11123,10 @@ function deriveMilestoneDates(p) {
   // Actual = first round's dateSubmitted in gaca_design_submission.submissionLog
   const designLog = sd('gaca_design_submission').submissionLog || [];
   // L10: "first round" by actual date, not array position — rounds entered out of order
-  // previously gave this milestone a different first-submission date than KPI 5 uses (which
-  // already sorts by dateSubmitted). Sort a copy; never mutate the stored log.
+  // previously gave this milestone a different first-submission date than the old E2E-TRS
+  // KPI used (which already sorted by dateSubmitted; that KPI was retired in P21, but this
+  // milestone-derivation logic is unrelated and unchanged). Sort a copy; never mutate the
+  // stored log.
   const sortedDesignLog = designLog.filter(r => r.dateSubmitted || r.dateCandC)
     .sort((a, b) => (a.dateSubmitted || a.dateCandC).localeCompare(b.dateSubmitted || b.dateCandC));
   const firstDesignSub = (sortedDesignLog[0] && (sortedDesignLog[0].dateSubmitted || sortedDesignLog[0].dateCandC)) || null;
@@ -12694,6 +12633,7 @@ if (_vpParams.get('verify')) {
   loadProjects();
   loadGovernance();
   loadKPISettings();
+  loadPortfolioReviews();
   // P14: local data is loaded above (so revealApp() below is instant once the gate clears),
   // but nothing is rendered/seeded yet — the mandatory sign-in gate (#authGate) covers the
   // whole viewport by default in the markup, and revealApp() (see the CLOUD SYNC section)
@@ -14744,6 +14684,7 @@ function downloadSession() {
     governance:  lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}),
     kpiSettings: lsGet(KPI_SETTINGS_KEY, {}),
     deletedProjects: lsGet(DELETED_KEY, {}),
+    portfolioReviews: lsGet(PORTFOLIO_KEY, {rounds:[]}),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
@@ -14788,11 +14729,14 @@ async function loadSessionFile(input) {
   // R2-L3: same check for kpiSettings — a doctored non-object value would persist, cloud-push
   // to teammates, and be silently ignored by loadKPISettings (overrides appear lost).
   if (data.kpiSettings !== undefined && (typeof data.kpiSettings !== 'object' || data.kpiSettings === null || Array.isArray(data.kpiSettings))) { showErr('✗ Invalid file — "kpiSettings" must be an object.'); return; }
+  // P21: same check for portfolioReviews — a doctored shape would persist, cloud-push to
+  // teammates, and be silently ignored by loadPortfolioReviews (the round log appears empty).
+  if (data.portfolioReviews !== undefined && (typeof data.portfolioReviews !== 'object' || data.portfolioReviews === null || !Array.isArray(data.portfolioReviews.rounds))) { showErr('✗ Invalid file — "portfolioReviews" must have a "rounds" list.'); return; }
   // C2: stash the outgoing session before overwriting it, so an accidental import of the
   // wrong file is still recoverable from localStorage even without a manual export.
   // R2-L1: if that stash fails (quota — it's a full-session write), abort rather than
   // proceed without the safety net the partial-save error message below promises.
-  if (!lsSet('aimo_pre_import_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}) })) {
+  if (!lsSet('aimo_pre_import_backup', { savedAt: new Date().toISOString(), projects: lsGet(STORAGE_KEY, []), governance: lsGet(GOVERNANCE_KEY, {actions:[],persons:[]}), kpiSettings: lsGet(KPI_SETTINGS_KEY, {}), portfolioReviews: lsGet(PORTFOLIO_KEY, {rounds:[]}) })) {
     showErr('✗ Import cancelled — browser storage is full, so the safety backup of your current session couldn\'t be saved. Free up space and try again. Nothing was changed.');
     return;
   }
@@ -14808,6 +14752,7 @@ async function loadSessionFile(input) {
     if (data.governance)  results.push(lsSet(GOVERNANCE_KEY,   data.governance));
     if (data.kpiSettings) results.push(lsSet(KPI_SETTINGS_KEY, data.kpiSettings));
     if (data.deletedProjects && typeof data.deletedProjects === 'object') results.push(lsSet(DELETED_KEY, data.deletedProjects));
+    if (data.portfolioReviews) results.push(lsSet(PORTFOLIO_KEY, data.portfolioReviews));
     // Review fix (CRITICAL): an import replaces the roster wholesale, so the registry shadow
     // — which describes the roster that was here a moment ago — is now meaningless. Clearing
     // it makes the next reconcile treat the imported roster as a first run (adopt, don't
@@ -14824,7 +14769,7 @@ async function loadSessionFile(input) {
   }
   sbSchedulePush(); // no-op if cloud sync isn't active/signed in — see sbSchedulePush's own guard
   // Reload state
-  loadProjects(); loadGovernance(); loadKPISettings();
+  loadProjects(); loadGovernance(); loadKPISettings(); loadPortfolioReviews();
   state.projects.forEach(p => { if (p.tasks&&p.tasks.length) calcTaskDates(p); deriveMilestoneDates(p); });
   renderSidebar(); showHomepage();
   // Show success, update summary

@@ -3,6 +3,57 @@
 All notable changes to AIMO Tracker are recorded here, newest at the top. Every
 shipped change gets an entry here (see `CLAUDE.md` § Versioning rules).
 
+## v5.0 — 26 Aug 2026
+**P21 — Replaced the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO
+Process KPIs V1.3" deck.** Major bump — this removes 5 of the 9 previously
+tracked KPIs and changes scoring formulas on the rest, per full consolidation/
+design/build detail in `PENDING_CHANGES.md`.
+
+- **`KPI_DEFAULTS`/`calcKPIs()` rebuilt around 6 KPIs**, renumbered to match
+  the deck:
+  1. **Document Review Duration** — sum (not average) of working days per
+     review cycle, split into Construction (Design Package Review, target
+     ≤25 wd) and OPS (Commissioning Package Review, target ≤22 wd) sub-scores
+     — each with its own threshold pair in KPI Settings.
+  2. **Masterplan / Concurrence / Concept Plan Review** — new, **portfolio-
+     wide** (not per-project): a submission/response round log
+     (`aimo_portfolio_reviews`, synced/exported like every other data domain)
+     with its own add/edit/delete UI in the KPI 2 detail view. Scored as the
+     slowest round (max working days), target ≤12 wd.
+  3. **Revisions to Acceptance** — the old avg-review-cycles KPI, rethresholded
+     to ≤3 revisions.
+  4. **GACA Submission Acceptance Rate** — same calculation as before,
+     rethresholded to ≥85% Excellent / <70% critical gap.
+  5. **Resubmission Efficiency Index (REI)** — the old KREI engine, renamed;
+     its Timeliness sub-score now scores each resubmission cycle individually
+     (≤7 wd = 40 pts, 8–12 wd = 20, >12 wd = 0, averaged) instead of an
+     aggregate-percentage bucket. Thresholds: ≥95 Excellent, ≥80 Good, <80 Not
+     Acceptable.
+  6. **Signature Collection Timeliness** — new KPI card surfacing a
+     calculation that already existed for the Portfolio Schedule's
+     "Signature Period" rows (package-completion acceptance → GACA submission
+     date), target ≤5 wd.
+- **Retired (cards removed, underlying data untouched):** PSQS, First
+  Submission Completeness Rate, End-to-End Regulatory Submission Time,
+  Comment Close Rate, C/D Major Finding Ratio. PSQS's document-registry
+  scoring UI inside the Design/Commissioning Package Review tabs is
+  unaffected — only its "KPI 1" labelling there was corrected, since PSQS
+  is no longer part of the scorecard.
+- KPI Settings, the KPI Reference Explainer, the KPI detail modal, and each
+  project's KPI health strip (sidebar cards) all updated to the new 6-KPI
+  set; the health strip excludes KPI 2 since it isn't project-specific.
+- New `portfolioReviews` data domain wired into every place `kpiSettings`
+  already was: cloud sync push/pull (with the same shape validation and
+  pre-pull/pre-import backups as the others) and Session export/import.
+- QA: headless Chromium exercised `calcKPIs()`/`calcPortfolioKPI()`/
+  `kreiScores()` against synthetic data covering every KPI's data path, all
+  6 KPI detail views, the settings table (incl. the new sub-key threshold
+  path for KPI 1), and a full add/edit/delete round-trip on the portfolio
+  review log — zero runtime errors, all figures hand-verified against the
+  formulas above.
+- **Not yet deployed** — `public/index.html` untouched, awaiting a separate
+  explicit "ship it" per `CLAUDE.md`.
+
 ## v4.5 — 10 Aug 2026
 Pre-ship fix set from **Audit Run 2** (the pre-deploy audit of v4.4 — see the
 "Code Audits — AIMO Projects Tracker" Notion page for the full findings). Six

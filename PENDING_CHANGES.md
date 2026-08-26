@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P21 | Replace the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO Process KPIs V1.3" deck (owner request) | 📋 Consolidated only — mapping/data-source analysis done, 3 open questions for the owner, nothing implemented |
+| P21 | Replace the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO Process KPIs V1.3" deck (owner request) | 🔧 Built, QA'd, versioned v5.0 on the owner's explicit "Go ahead and build it" — **not yet deployed**, awaiting a separate "ship it" |
 | P20 | Audit Run 2 pre-ship set — sync-safety fixes (R2-1, R2-2, R2-4, R2-L1, R2-L3) + draw-toolbar hover icons (R2-6) | ✅ **Shipped (v4.5, 10 Aug 2026)** on the owner's "fix and deploy"; scope = "Pre-ship set" per owner choice. See the Code Audits Notion page, Audit Run 2 |
 | P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | ✅ **Shipped (v4.4, 09 Aug 2026)** on the owner's explicit "begin deployment" |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
@@ -138,12 +138,12 @@ process in `CLAUDE.md`. Newest items at the top of each section.
      typo** ("No acceptable: >80" directly under "Good: ≥80") — please confirm
      the intended band, e.g. Excellent ≥95 / Good ≥80 / Not acceptable <80.
 
-  **Not yet approved to build.** Per `CLAUDE.md`, this is a major version bump
+  **Not yet approved to build.** ~~Per `CLAUDE.md`, this is a major version bump
   (KPI framework replacement) touching sensitive KPI-scoring logic — requires
   an independent review pass before shipping, and no code changes happen until
   the owner gives an explicit go on a scoped plan (the three questions above
   need answers first, since Q1/Q2 materially change how much is a relabel vs.
-  a new build).
+  a new build).~~ **Superseded — see below.**
 
   **Owner answers (26 Aug 2026) — design finalized, still awaiting the build
   go-ahead:**
@@ -193,6 +193,20 @@ process in `CLAUDE.md`. Newest items at the top of each section.
   - Given the scope (KPI-scoring rewrite + a new portfolio-level data domain),
     this needs an independent review pass before shipping per `CLAUDE.md`, and
     is a major version bump.
+
+  **Built and QA'd as v5.0 (26 Aug 2026)** on the owner's explicit "Go ahead
+  and build it" — exactly the scope above, plus KPI 1's mapping locked to the
+  owner's answer (Construction = Design Package Review, OPS = Commissioning
+  Package Review; no data source exists yet for the deck's separate "design
+  reviews ≤18 wd" bucket, so KPI 1 ships with the two sub-targets only) and
+  KPI 2 built as a new Overview-tab panel/detail-view CRUD log, per the
+  owner's "incorporate this somewhere" delegation on placement. See
+  `CHANGELOG.md` v5.0 for the full per-KPI breakdown and QA method (headless
+  Chromium against synthetic data covering every KPI's data path — all
+  figures hand-verified against the formulas). **Not yet deployed** —
+  `public/index.html` untouched, awaiting a separate explicit "ship it".
+  Independent review still needed before that ship, per the major-bump/
+  KPI-scoring triggers in `CLAUDE.md`.
 - **P18 — Cloud Sync: last-synced date + who last saved** (06 Aug 2026, in-app
   feedback via the Notion Feedback Inbox, submitted 05 Aug 2026 against v3.0 ·
   Homepage: *"in the 'Cloud Sync', the last sync should also display the date (in
