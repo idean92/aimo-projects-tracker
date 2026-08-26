@@ -51,6 +51,41 @@ design/build detail in `PENDING_CHANGES.md`.
   path for KPI 1), and a full add/edit/delete round-trip on the portfolio
   review log — zero runtime errors, all figures hand-verified against the
   formulas above.
+- **Independent review** (required — major bump + KPI scoring, per
+  `CLAUDE.md`) found 3 blocking issues and 3 more worth fixing before ship,
+  all fixed and re-verified headless:
+  - KPI 2's add/edit/delete UI never refreshed the KPI Detail modal it lives
+    in (it wrote to `#kpiDetailBody`, which only `openKPIDetail()` renders,
+    not `renderProjectDetail()`) — a round add/edit/delete saved correctly
+    but appeared to do nothing on screen. Fixed by having the CRUD functions
+    re-run `openKPIDetail(2)`.
+  - KPI 3 ("Revisions to Acceptance") counted total submissions, not
+    revisions — a package accepted on its first submission showed "1
+    revision" instead of 0, and every figure was inflated by exactly one
+    against the deck's own definition. Fixed (submissions − 1, floored at 0).
+  - A stale `kpiSettings` override from the old 9-KPI framework could
+    silently re-score a new KPI under a threshold meaning something
+    completely different (e.g. an old KPI 6 GACA-rate override driving the
+    new KPI 6 Signature Collection Timeliness). `loadKPISettings()` now
+    stamps and checks a framework version, resetting on mismatch — no
+    manual `localStorage` wipe needed.
+  - KPI 1's per-cycle detail rows compared one cycle's days against the
+    *stage total's* threshold, so several short cycles could each show green
+    while the total they summed to was red. Status pill now only appears on
+    the Total row.
+  - Deleting a portfolio round had no confirmation, unlike every comparable
+    row-delete in the app — now confirms first.
+  - The REI Timeliness badge was still keyed to the retired aggregate-bucket
+    stat (`pct7`, "% in ≤7 days") instead of the new per-cycle score it sits
+    next to, so it could show a misleadingly harsh color for a middling
+    score. Badge now derives from the actual score.
+  - Also fixed: the KPI 2 scorecard card and detail view undercounted
+    logged rounds (excluded ones missing a response date from the "N
+    round(s) logged" count); the Session backup summary claimed "No data"
+    and disabled the download button when only portfolio rounds existed
+    (no projects/governance yet); a malformed round `id` from a doctored
+    import/cloud row is now sanitized on load rather than trusted verbatim
+    into an `onclick` handler.
 - **Not yet deployed** — `public/index.html` untouched, awaiting a separate
   explicit "ship it" per `CLAUDE.md`.
 

@@ -4819,11 +4819,15 @@ function calcKPIs(p) {
     { key:'gaca_package_review',           label:'Design' },
     { key:'gaca_commissioning_submission', label:'Comm.'  },
   ];
+  // Review fix (B3): the deck defines this as "revisions from 1st submission to acceptance" —
+  // a package accepted on its first submission has 0 revisions, not 1. `subs` counts total
+  // submission events per stage, so the revision count is subs minus the first (non-revision)
+  // submission, floored at 0.
   let totalRaised = 0, totalD = 0, totalC = 0, cyclesArr = [];
   PKG.forEach(({key}) => {
     const events = p.stageDocs?.[key]?.reviewEvents || [];
     const subs = events.filter(e => e.type==='submission' && !e.isNonGaca).length;
-    if (subs > 0) cyclesArr.push(subs);
+    if (subs > 0) cyclesArr.push(Math.max(0, subs - 1));
     events.forEach(ev => {
       if (ev.type === 'response') {
         totalRaised += ev.commentsRaised || 0;
@@ -4889,8 +4893,16 @@ const RAG_LABEL = { green:'On Target', amber:'Caution', red:'Below Target', none
 /* ── KPI Settings helpers ─────────────────────────────────────────── */
 function loadKPISettings() {
   try { const d = JSON.parse(localStorage.getItem(KPI_SETTINGS_KEY)); if (d && typeof d === 'object') kpiSettings = d; } catch(e) {}
+  // Review fix (B2): kpiSettings is keyed purely by KPI number, and P21 reassigned what
+  // numbers 1–6 mean (and retired 7–9) with no other way to detect a stale override — e.g. an
+  // old KPI 6 override (GACA acceptance rate, 90/75, higher-is-better) would otherwise silently
+  // re-score the new KPI 6 (Signature Collection Timeliness, ≤5wd, lower-is-better) under a
+  // threshold that means something completely different now. Stamp the framework version and
+  // reset on mismatch — self-healing, no manual localStorage wipe required (CLAUDE.md).
+  if (kpiSettings._fw !== 'p21') kpiSettings = { _fw: 'p21' };
 }
 function saveKPISettings() {
+  kpiSettings._fw = 'p21';
   lsSet(KPI_SETTINGS_KEY, kpiSettings);
   setBackupDirty(true);
 }
@@ -4930,10 +4942,25 @@ function updateKPISetting(num, field, rawVal, subKey) {
    stageDocs entry. A "round" is one portfolio document provided by KSIADC/the portfolio
    team and RAC AIMO's response to it (no CRS upload — the deck's scope here is simply the
    submitted/responded date pair per round). */
+// Review fix (L10): round `id` is interpolated unescaped into onclick/onchange handlers
+// (updatePortfolioRound/deletePortfolioRound) — safe for ids this app generates itself, but a
+// doctored session-import file or cloud row could carry a crafted id to break out of the
+// attribute and run script. Re-mint any id that doesn't match this app's own format at load,
+// the trust boundary, rather than escaping at every render site.
+const _PR_ID_RE = /^pr_[0-9]+_[a-z0-9]+$/;
 function loadPortfolioReviews() {
   try {
     const d = JSON.parse(localStorage.getItem(PORTFOLIO_KEY));
-    if (d && typeof d === 'object' && Array.isArray(d.rounds)) { portfolioReviews = d; return; }
+    if (d && typeof d === 'object' && Array.isArray(d.rounds)) {
+      d.rounds = d.rounds.filter(r => r && typeof r === 'object').map(r => ({
+        id: (typeof r.id === 'string' && _PR_ID_RE.test(r.id)) ? r.id
+          : 'pr_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        title: typeof r.title === 'string' ? r.title : '',
+        dateProvided: typeof r.dateProvided === 'string' ? r.dateProvided : '',
+        dateResponded: typeof r.dateResponded === 'string' ? r.dateResponded : '',
+      }));
+      portfolioReviews = d; return;
+    }
   } catch(e) {}
   if (!portfolioReviews || !Array.isArray(portfolioReviews.rounds)) portfolioReviews = { rounds: [] };
 }
@@ -4948,23 +4975,32 @@ function calcPortfolioKPI() {
   const max = rows.length ? Math.max(...rows.map(r => r.days)) : null;
   return { max, rows };
 }
+// Review fix (B1): the round table lives in the KPI Detail modal's own body (#kpiDetailBody,
+// written only by openKPIDetail()) — renderProjectDetail() never touches it, so a round add/
+// edit/delete was saving correctly but never appearing on screen until the modal was closed
+// and reopened. Re-run openKPIDetail(2) instead so the modal reflects its own new state.
 function addPortfolioRound() {
   if (!portfolioReviews.rounds) portfolioReviews.rounds = [];
   portfolioReviews.rounds.push({ id: 'pr_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    title: '', dateProvided: '', dateResponded: '', notes: '' });
+    title: '', dateProvided: '', dateResponded: '' });
   savePortfolioReviews();
-  renderProjectDetail();
+  openKPIDetail(2);
 }
 function updatePortfolioRound(id, field, value) {
   const r = (portfolioReviews.rounds || []).find(x => x.id === id);
   if (!r) return;
   r[field] = value;
   savePortfolioReviews();
+  openKPIDetail(2);
 }
-function deletePortfolioRound(id) {
+// Review fix (M5): every other row-delete in this app confirms first (doc rows, review
+// events, submission rounds) — this one didn't, and combined with B1's silent-looking delete
+// a mis-click had no undo path.
+async function deletePortfolioRound(id) {
+  if (!await showConfirm('Remove this portfolio review round?')) return;
   portfolioReviews.rounds = (portfolioReviews.rounds || []).filter(x => x.id !== id);
   savePortfolioReviews();
-  renderProjectDetail();
+  openKPIDetail(2);
 }
 
 function buildKPIScorecard(p) {
@@ -5158,8 +5194,8 @@ function buildKPIScorecard(p) {
       ${card(1,'Document Review Duration',val1,r1,tgt1,
         (k.pkgDur.constructionTotal===null && k.pkgDur.opsTotal===null)?'Requires Submission + Response events with dates in the Design/Commissioning Package Review tabs':null,sub1)}
       ${card(2,'Masterplan / Concept Plan Review (Portfolio-wide)',pk.max!==null?pk.max+' wd (slowest round)':'—',r2,tgt(2),
-        pk.rows.length===0?'No portfolio review rounds logged yet — open this card to add one':null,
-        pk.rows.length?`${pk.rows.length} round(s) logged`:null)}
+        (portfolioReviews.rounds||[]).length===0?'No portfolio review rounds logged yet — open this card to add one':null,
+        (portfolioReviews.rounds||[]).length?`${(portfolioReviews.rounds||[]).length} round(s) logged`:null)}
       ${card(3,'Revisions to Acceptance',k.revisions.avgCycles!==null?k.revisions.avgCycles+' revisions avg':'—',r3,tgt(3)+' · ≤ 15% rejection',
         k.revisions.avgCycles===null?'No submission cycles recorded yet':null,revSub)}
     </div>
@@ -5279,13 +5315,16 @@ function buildKPIDetailHTML(num, p, k) {
           const d = workingDaysKSA(events[i].date, events[i+1].date);
           if (d !== null && d >= 0) {
             hasAny = true; stageTotal += d;
-            const r = kpiRag(d, getKPIS(1,'goodT',sub), getKPIS(1,'warnT',sub), getKPIS(1,'invert',sub));
+            // Review fix (M4): the threshold is defined against the stage TOTAL (below), not
+            // any individual cycle — a status pill here previously compared one cycle's days
+            // straight against the total's threshold, so e.g. four short cycles could each
+            // show green while the total they summed to was red. No per-cycle status.
             rows += `<tr>
               <td style="${tdS}">${esc(label)}</td>
               <td style="${tdS}color:var(--text-3);">${events[i].date}</td>
               <td style="${tdS}color:var(--text-3);">${events[i+1].date}</td>
               <td style="${tdS}text-align:right;font-weight:700;">${d} wd</td>
-              <td style="${tdS}text-align:right;">${ragPill(r)}</td>
+              <td style="${tdS}text-align:right;"></td>
             </tr>`;
           }
         }
@@ -5319,9 +5358,9 @@ function buildKPIDetailHTML(num, p, k) {
           style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--bg-card);color:var(--text-1);font-family:inherit;"
           onchange="updatePortfolioRound('${r.id}','title',this.value)"></td>
         <td style="${tdS}"><input type="date" value="${esc(r.dateProvided||'')}" class="krei-date-inp"
-          onchange="updatePortfolioRound('${r.id}','dateProvided',this.value);renderProjectDetail();"></td>
+          onchange="updatePortfolioRound('${r.id}','dateProvided',this.value)"></td>
         <td style="${tdS}"><input type="date" value="${esc(r.dateResponded||'')}" class="krei-date-inp"
-          onchange="updatePortfolioRound('${r.id}','dateResponded',this.value);renderProjectDetail();"></td>
+          onchange="updatePortfolioRound('${r.id}','dateResponded',this.value)"></td>
         <td style="${tdS}text-align:right;font-weight:700;">${days!==null?days+' wd':'<span style="color:var(--text-3);">—</span>'}</td>
         <td style="${tdS}text-align:right;">${days!==null?ragPill(rag):''}</td>
         <td style="${tdS}text-align:right;"><button class="btn btn-ghost btn-xs" onclick="deletePortfolioRound('${r.id}')" title="Delete round">✕</button></td>
@@ -5332,7 +5371,7 @@ function buildKPIDetailHTML(num, p, k) {
       <span style="font-size:20px;font-weight:800;color:${ragHex(kpiRag(pk.max,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))};">${pk.max} wd</span>
       ${ragPill(kpiRag(pk.max,getKPIS(2,'goodT'),getKPIS(2,'warnT'),getKPIS(2,'invert')))}
     </div>` : '';
-    const addBtn = `<div style="margin-bottom:10px;"><button class="btn btn-ghost btn-xs" onclick="addPortfolioRound();renderProjectDetail();">+ Add Round</button></div>`;
+    const addBtn = `<div style="margin-bottom:10px;"><button class="btn btn-ghost btn-xs" onclick="addPortfolioRound()">+ Add Round</button></div>`;
     return `<div style="font-size:11px;color:var(--text-3);font-style:italic;margin-bottom:10px;">This log is shared across the whole portfolio — it is not specific to ${esc(p.name)}. Add one row per portfolio document (Masterplan update, Project Concurrence, Concept Plan) submitted for RAC AIMO review.</div>`
       + overall + addBtn + tableWrap(
       [{h:'Document / Round'},{h:'Date Provided'},{h:'Date Responded'},{h:'Working Days',right:true},{h:'Status',right:true},{h:'',right:true}],
@@ -5347,6 +5386,9 @@ function buildKPIDetailHTML(num, p, k) {
     PKG.forEach(({key, label}) => {
       const events = p.stageDocs?.[key]?.reviewEvents || [];
       const subs = events.filter(e => e.type==='submission' && !e.isNonGaca).length;
+      // Review fix (B3): revisions = submissions after the first (accepted-on-first = 0
+      // revisions), matching calcKPIs()'s revisions.avgCycles.
+      const revs = subs > 0 ? Math.max(0, subs - 1) : null;
       let raised=0, dCount=0, cCount=0;
       events.forEach(ev => {
         if (ev.type==='response') {
@@ -5356,11 +5398,11 @@ function buildKPIDetailHTML(num, p, k) {
         }
       });
       const rejPct = raised>0 ? Math.round((dCount/raised)*100) : null;
-      const cycleRag = subs>0 ? kpiRag(subs, getKPIS(3,'goodT'), getKPIS(3,'warnT'), getKPIS(3,'invert')) : 'none';
+      const cycleRag = revs!=null ? kpiRag(revs, getKPIS(3,'goodT'), getKPIS(3,'warnT'), getKPIS(3,'invert')) : 'none';
       const rejRag   = rejPct!=null ? kpiRag(rejPct, 15, 25, true) : 'none';
       rows += `<tr>
         <td style="${tdS}">${esc(label)}</td>
-        <td style="${tdS}text-align:center;">${subs||'<span style="color:var(--text-3);">—</span>'} ${subs?ragPill(cycleRag):''}</td>
+        <td style="${tdS}text-align:center;">${revs!=null?revs:'<span style="color:var(--text-3);">—</span>'} ${revs!=null?ragPill(cycleRag):''}</td>
         <td style="${tdS}text-align:center;">${raised||'—'}</td>
         <td style="${tdS}text-align:center;">${dCount}${rejPct!=null?` (${rejPct}%) ${ragPill(rejRag)}`:'<span style="color:var(--text-3);"> —</span>'}</td>
         <td style="${tdS}text-align:center;${cCount>5?'color:#c0392b;font-weight:700;':''}">${cCount}</td>
@@ -5907,7 +5949,13 @@ function buildKREISection(p) {
   const reiGood = getKPIS(5,'goodT'), reiWarn = getKPIS(5,'warnT');
   const clsA     = ragClass(sc.pctClosure, 90, 60, false);
   const clsB     = ragClass(sc.repeatPct,  5, 15, true);
-  const clsC     = ragClass(sc.pct7, 80, 50, false);
+  // Review fix (L8): the badge must reflect the score it sits next to. sc.scoreC is now a
+  // per-cycle point average (40/8-12d=20/>12d=0), while pct7 (% of cycles ≤7 days) is a
+  // different statistic that can disagree with it — e.g. all cycles landing in the 8–12d band
+  // score a middling 20/40 (50%) but have 0% "in ≤7 days", which previously painted the badge
+  // red for a result that isn't actually the worst case. Derive both from scoreC itself.
+  const scoreCPct = sc.scoreC !== null ? Math.round((sc.scoreC/40)*100) : null;
+  const clsC     = ragClass(scoreCPct, 80, 50, false);
   const clsTotal = sc.total === null ? '' : sc.total >= reiGood ? 'var-green' : sc.total >= reiWarn ? 'var-amber' : 'var-red';
   const totalColor = sc.total === null ? 'var(--text-3)' : sc.total >= reiGood ? '#1a7a4a' : sc.total >= reiWarn ? '#8a5c00' : '#c0392b';
   const totalBg    = sc.total === null ? 'var(--bg-elevated)' : sc.total >= reiGood ? '#e8f8f1' : sc.total >= reiWarn ? '#fff3cd' : '#fde8e8';
@@ -5927,7 +5975,7 @@ function buildKREISection(p) {
     ? `<span class="ms-var-badge ${clsB}" style="font-size:10px;">${sc.repeatPct}% repeat</span>`
     : `<span style="font-size:10px;color:var(--text-3);">No cycle data yet</span>`;
   const badgeC = sc.hasResubs
-    ? `<span class="ms-var-badge ${clsC}" style="font-size:10px;">${sc.pct7}% in &#8804;7 days</span>`
+    ? `<span class="ms-var-badge ${clsC}" style="font-size:10px;">${scoreCPct}% timeliness score</span>`
     : `<span style="font-size:10px;color:var(--text-3);">No review cycles yet</span>`;
 
   // ── Data sources summary table ────────────────────────────────────────────
@@ -14786,15 +14834,20 @@ async function loadSessionFile(input) {
 function updateSessionSummary() {
   const projects   = lsGet(STORAGE_KEY, []);
   const governance = lsGet(GOVERNANCE_KEY, {actions:[]});
+  // Review fix (M6): a team could log portfolio review rounds (KPI 2) before ever creating a
+  // project — without this, the summary claimed "No data" and disabled the Download button
+  // even though downloadSession() would have written those rounds correctly.
+  const portfolio  = lsGet(PORTFOLIO_KEY, {rounds:[]});
   const el = document.getElementById('sessionDataSummary');
   if (!el) return;
-  if (!projects.length && !(governance.actions||[]).length) {
+  if (!projects.length && !(governance.actions||[]).length && !(portfolio.rounds||[]).length) {
     el.textContent = 'No data in current session — you can load a previous session below.';
     document.getElementById('sessionDownloadSection').querySelector('button').disabled = true;
   } else {
     const p = projects.length;
     const g = (governance.actions||[]).length;
-    el.textContent = `Current session: ${p} project${p!==1?'s':''} · ${g} governance action${g!==1?'s':''}.`;
+    const r = (portfolio.rounds||[]).length;
+    el.textContent = `Current session: ${p} project${p!==1?'s':''} · ${g} governance action${g!==1?'s':''}${r?` · ${r} portfolio review round${r!==1?'s':''}`:''}.`;
     document.getElementById('sessionDownloadSection').querySelector('button').disabled = false;
   }
 }

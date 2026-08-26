@@ -6,7 +6,7 @@ process in `CLAUDE.md`. Newest items at the top of each section.
 ## Summary
 | # | Item | Status |
 |---|------|--------|
-| P21 | Replace the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO Process KPIs V1.3" deck (owner request) | 🔧 Built, QA'd, versioned v5.0 on the owner's explicit "Go ahead and build it" — **not yet deployed**, awaiting a separate "ship it" |
+| P21 | Replace the 9-KPI framework with the 6 KPIs from RAC AIMO's "AIMO Process KPIs V1.3" deck (owner request) | 🔧 Built, QA'd, versioned v5.0; independent review found 3 blocking + 3 minor issues, all fixed and re-verified — **not yet deployed**, awaiting a separate "ship it" |
 | P20 | Audit Run 2 pre-ship set — sync-safety fixes (R2-1, R2-2, R2-4, R2-L1, R2-L3) + draw-toolbar hover icons (R2-6) | ✅ **Shipped (v4.5, 10 Aug 2026)** on the owner's "fix and deploy"; scope = "Pre-ship set" per owner choice. See the Code Audits Notion page, Audit Run 2 |
 | P19 | Broken Leaflet/Leaflet.Draw icons — Project Scope satellite map's draw toolbar shows blank white buttons | ✅ **Shipped (v4.4, 09 Aug 2026)** on the owner's explicit "begin deployment" |
 | P18 | Cloud Sync: show the full date (not just time) on "Last synced", plus who last saved | ✅ **Shipped (v4.3, 06 Aug 2026)** on the owner's explicit "ship it". Fable 5 review found one blocker (wrong-person attribution across the v4.2/v4.3 window) — fixed server-side in the trigger before shipping |
@@ -203,10 +203,24 @@ process in `CLAUDE.md`. Newest items at the top of each section.
   owner's "incorporate this somewhere" delegation on placement. See
   `CHANGELOG.md` v5.0 for the full per-KPI breakdown and QA method (headless
   Chromium against synthetic data covering every KPI's data path — all
-  figures hand-verified against the formulas). **Not yet deployed** —
-  `public/index.html` untouched, awaiting a separate explicit "ship it".
-  Independent review still needed before that ship, per the major-bump/
-  KPI-scoring triggers in `CLAUDE.md`.
+  figures hand-verified against the formulas).
+
+  **Independent review** (required — major bump + KPI scoring) found 3
+  blocking issues and 3 more worth fixing before ship — all fixed and
+  re-verified headless, see `CHANGELOG.md` v5.0 for the full list. Most
+  notable: KPI 2's add/edit/delete UI was writing to the right data but
+  rendering into the wrong DOM target, so it looked completely broken on
+  screen (fixed by re-running the modal's own render function instead of
+  the project-detail one); and KPI 3 ("Revisions to Acceptance") was
+  counting total submissions rather than revisions, inflating every figure
+  by exactly one against the deck's own definition (a package accepted on
+  its first try now correctly shows 0, not 1). Also added a self-healing
+  version stamp on `kpiSettings` so a leftover override from the old
+  9-KPI framework can't silently re-score a same-numbered but
+  differently-defined new KPI.
+
+  **Not yet deployed** — `public/index.html` untouched, awaiting a separate
+  explicit "ship it".
 - **P18 — Cloud Sync: last-synced date + who last saved** (06 Aug 2026, in-app
   feedback via the Notion Feedback Inbox, submitted 05 Aug 2026 against v3.0 ·
   Homepage: *"in the 'Cloud Sync', the last sync should also display the date (in

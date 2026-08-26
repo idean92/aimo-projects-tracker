@@ -28,17 +28,27 @@ is later synced with that local folder.
 ## Architecture, as it actually is
 - Data lives entirely in the browser via `localStorage`. Key constants (confirmed in
   file): `STORAGE_KEY = 'aimo_projects'`, `GOVERNANCE_KEY = 'aimo_governance'`,
-  `KPI_SETTINGS_KEY = 'aimo_kpi_settings'`. There's a session backup/restore modal
-  (`downloadSession()` / `loadSessionFile()`) that exports/imports the current
-  `localStorage` data as a JSON file — this is the *only* backup mechanism; there is
-  no cloud sync in this app (see the sibling project note below).
+  `KPI_SETTINGS_KEY = 'aimo_kpi_settings'`, `PORTFOLIO_KEY = 'aimo_portfolio_reviews'`
+  (P21, 26 Aug 2026 — the portfolio-wide Masterplan/Concurrence/Concept Plan review
+  log). There's a session backup/restore modal (`downloadSession()` / `loadSessionFile()`)
+  that exports/imports the current `localStorage` data as a JSON file — this is the *only*
+  backup mechanism; there is no cloud sync in this app (see the sibling project note below).
+  *(This bullet predates cloud sync, shipped in P7/v2.0 — see `CLAUDE.md`. Left as-is since
+  this file is a point-in-time baseline snapshot, not continuously maintained; `CLAUDE.md`
+  is the corrected, living reference.)*
 - Projects carry a `stageDocs` object keyed by stage (e.g. `project_completion: {
   label, docs }`) tracking document review metrics per stage (completion %, comments
   raised/closed, revisions, comment classes A–D/I, duration).
-- KPI framework: `KPI_DEFAULTS` (line ~2180) defines 9 tracked KPIs — PSQS score,
+- KPI framework: ~~`KPI_DEFAULTS` (line ~2180) defines 9 tracked KPIs — PSQS score,
   first-submission completeness, avg review cycles, **KREI score** (KPI #4, "/100",
   tied to design-review performance), end-to-end days, GACA acceptance rate, RAC
-  review working days, comment close rate, and C/D major finding ratio.
+  review working days, comment close rate, and C/D major finding ratio.~~ **Replaced
+  in P21 (v5.0, 26 Aug 2026)** with 6 KPIs matching RAC AIMO's "AIMO Process KPIs V1.3"
+  deck: Document Review Duration (Construction/OPS sub-thresholds), Masterplan/
+  Concurrence/Concept Plan Review (portfolio-wide, not per-project — see `PORTFOLIO_KEY`
+  above), Revisions to Acceptance, GACA Submission Acceptance Rate, Resubmission
+  Efficiency Index (REI, renamed from KREI), and Signature Collection Timeliness. See
+  `PENDING_CHANGES.md` (P21) and `CHANGELOG.md` (v5.0) for the full mapping and rationale.
 - Versioning already exists in-code: `const APP_VERSION` and `const APP_DATE` near the
   top of `aimo-tracker.html` (see `CHANGELOG.md` for the current value — don't hardcode
   it here, it drifts), shown in the sidebar version badge (`#appVersionBadge`). There
